@@ -47,9 +47,9 @@ func WriteError(c *gin.Context, status int, code, message string) {
 }
 
 // WriteBindError writes the 400/413 response for a failed ShouldBindJSON call.
-func WriteBindError(c *gin.Context, err error) {
+func WriteBindError(c *gin.Context, bindError error) {
 	var tooLarge *http.MaxBytesError
-	if errors.As(err, &tooLarge) {
+	if errors.As(bindError, &tooLarge) {
 		WriteError(c, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "request body too large")
 		return
 	}
@@ -57,21 +57,21 @@ func WriteBindError(c *gin.Context, err error) {
 }
 
 // MapError translates a service-layer sentinel error into an HTTP response.
-func MapError(c *gin.Context, err error) {
+func MapError(c *gin.Context, mappedError error) {
 	switch {
-	case errors.Is(err, apperr.ErrInvalidInput):
-		WriteError(c, http.StatusBadRequest, "INVALID_INPUT", safeMessage(err, "invalid input"))
-	case errors.Is(err, platform.ErrUnauthorized):
+	case errors.Is(mappedError, apperr.ErrInvalidInput):
+		WriteError(c, http.StatusBadRequest, "INVALID_INPUT", safeMessage(mappedError, "invalid input"))
+	case errors.Is(mappedError, platform.ErrUnauthorized):
 		WriteError(c, http.StatusUnauthorized, "UNAUTHORIZED", "invalid credentials")
-	case errors.Is(err, platform.ErrNotFound):
+	case errors.Is(mappedError, platform.ErrNotFound):
 		WriteError(c, http.StatusNotFound, "NOT_FOUND", "resource not found")
-	case errors.Is(err, platform.ErrConflict):
+	case errors.Is(mappedError, platform.ErrConflict):
 		WriteError(c, http.StatusConflict, "CONFLICT", "resource already exists")
-	case errors.Is(err, platform.ErrRateLimited):
+	case errors.Is(mappedError, platform.ErrRateLimited):
 		WriteError(c, http.StatusTooManyRequests, "RATE_LIMITED", "too many requests")
-	case errors.Is(err, platform.ErrPayloadTooLarge):
+	case errors.Is(mappedError, platform.ErrPayloadTooLarge):
 		WriteError(c, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "request body too large")
-	case errors.Is(err, platform.ErrUpstream):
+	case errors.Is(mappedError, platform.ErrUpstream):
 		WriteError(c, http.StatusBadGateway, "BAD_GATEWAY", "upstream service unavailable")
 	default:
 		WriteError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "an unexpected error occurred")
@@ -82,9 +82,9 @@ func MapError(c *gin.Context, err error) {
 // so the client sees "national_id or passport_id required" instead of
 // "invalid input: national_id or passport_id required". Any other error
 // falls back to a generic, PII-free message.
-func safeMessage(err error, fallback string) string {
+func safeMessage(messageError error, fallback string) string {
 	const prefix = "invalid input: "
-	msg := err.Error()
+	msg := messageError.Error()
 	if len(msg) > len(prefix) && msg[:len(prefix)] == prefix {
 		return msg[len(prefix):]
 	}

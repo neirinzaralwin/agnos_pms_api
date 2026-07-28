@@ -11,10 +11,10 @@ import (
 
 func TestParse(t *testing.T) {
 	t.Parallel()
-	code, err := hospital.Parse("  Hospital-A ")
-	require.NoError(t, err)
+	code, operationError := hospital.Parse("  Hospital-A ")
+	require.NoError(t, operationError)
 	require.Equal(t, "hospital-a", code.String())
 
-	_, err = hospital.Parse("  ")
-	require.ErrorIs(t, err, apperr.ErrInvalidInput)
+	_, operationError = hospital.Parse("  ")
+	require.ErrorIs(t, operationError, apperr.ErrInvalidInput)
 }

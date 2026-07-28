@@ -27,8 +27,8 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 }
 
 // Create inserts a staff member. Returns platform.ErrConflict on unique violation.
-func (r *Repository) Create(ctx context.Context, staff *domain.Staff) error {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+func (r *Repository) Create(requestContext context.Context, staff *domain.Staff) error {
+	requestContext, cancel := context.WithTimeout(requestContext, 3*time.Second)
 	defer cancel()
 
 	const query = `
@@ -36,21 +36,21 @@ func (r *Repository) Create(ctx context.Context, staff *domain.Staff) error {
 		VALUES ($1, $2, $3)
 		RETURNING id, created_at, updated_at
 	`
-	err := r.pool.QueryRow(ctx, query, staff.Username, staff.PasswordHash, staff.Hospital).
+	operationError := r.pool.QueryRow(requestContext, query, staff.Username, staff.PasswordHash, staff.Hospital).
 		Scan(&staff.ID, &staff.CreatedAt, &staff.UpdatedAt)
-	if err != nil {
+	if operationError != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		if errors.As(operationError, &pgErr) && pgErr.Code == "23505" {
 			return platform.ErrConflict
 		}
-		return fmt.Errorf("create staff: %w", err)
+		return fmt.Errorf("create staff: %w", operationError)
 	}
 	return nil
 }
 
 // FindByUsernameAndHospital returns the staff row or platform.ErrNotFound.
-func (r *Repository) FindByUsernameAndHospital(ctx context.Context, username, hospitalCode string) (*domain.Staff, error) {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+func (r *Repository) FindByUsernameAndHospital(requestContext context.Context, username, hospitalCode string) (*domain.Staff, error) {
+	requestContext, cancel := context.WithTimeout(requestContext, 3*time.Second)
 	defer cancel()
 
 	const query = `
@@ -59,14 +59,14 @@ func (r *Repository) FindByUsernameAndHospital(ctx context.Context, username, ho
 		WHERE username = $1 AND hospital = $2
 	`
 	var staff domain.Staff
-	err := r.pool.QueryRow(ctx, query, username, hospitalCode).Scan(
+	operationError := r.pool.QueryRow(requestContext, query, username, hospitalCode).Scan(
 		&staff.ID, &staff.Username, &staff.PasswordHash, &staff.Hospital, &staff.CreatedAt, &staff.UpdatedAt,
 	)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(operationError, pgx.ErrNoRows) {
 		return nil, platform.ErrNotFound
 	}
-	if err != nil {
-		return nil, fmt.Errorf("get staff: %w", err)
+	if operationError != nil {
+		return nil, fmt.Errorf("get staff: %w", operationError)
 	}
 	return &staff, nil
 }

@@ -11,12 +11,12 @@ import (
 
 func TestNew(t *testing.T) {
 	t.Parallel()
-	username, err := domain.ParseUsername("alice")
-	require.NoError(t, err)
-	code, err := hospital.Parse("hospital-a")
-	require.NoError(t, err)
+	username, operationError := domain.ParseUsername("alice")
+	require.NoError(t, operationError)
+	code, operationError := hospital.Parse("hospital-a")
+	require.NoError(t, operationError)
 
-	staff, err := domain.New(username, code, "hash")
-	require.NoError(t, err)
+	staff, operationError := domain.New(username, code, "hash")
+	require.NoError(t, operationError)
 	require.True(t, staff.BelongsTo(code))
 }

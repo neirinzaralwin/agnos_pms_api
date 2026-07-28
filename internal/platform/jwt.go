@@ -43,14 +43,14 @@ func Issue(claims TokenClaims, secret string, ttl time.Duration, now time.Time) 
 
 // Parse verifies an HS256 token and returns its claims. Rejects any other algorithm.
 func Parse(tokenString, secret string) (TokenClaims, error) {
-	parsed, err := jwt.ParseWithClaims(tokenString, &jwtClaims{}, func(t *jwt.Token) (any, error) {
+	parsed, operationError := jwt.ParseWithClaims(tokenString, &jwtClaims{}, func(t *jwt.Token) (any, error) {
 		if t.Method != jwt.SigningMethodHS256 {
 			return nil, fmt.Errorf("%w: unexpected signing method", ErrUnauthorized)
 		}
 		return []byte(secret), nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
-	if err != nil {
-		return TokenClaims{}, fmt.Errorf("%w: %v", ErrUnauthorized, err)
+	if operationError != nil {
+		return TokenClaims{}, fmt.Errorf("%w: %v", ErrUnauthorized, operationError)
 	}
 
 	claims, ok := parsed.Claims.(*jwtClaims)

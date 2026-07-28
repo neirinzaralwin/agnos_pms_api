@@ -16,20 +16,22 @@ import (
 )
 
 type fakeRepository struct {
-	CreateFn                   func(ctx context.Context, staff *domain.Staff) error
-	FindByUsernameAndHospitalFn func(ctx context.Context, username, hospitalCode string) (*domain.Staff, error)
-	store                      map[string]*domain.Staff
+	CreateFn                    func(requestContext context.Context, staff *domain.Staff) error
+	FindByUsernameAndHospitalFn func(requestContext context.Context, username, hospitalCode string) (*domain.Staff, error)
+	store                       map[string]*domain.Staff
 }
 
 func newFakeRepository() *fakeRepository {
 	return &fakeRepository{store: make(map[string]*domain.Staff)}
 }
 
-func (f *fakeRepository) key(username, hospitalCode string) string { return username + "|" + hospitalCode }
+func (f *fakeRepository) key(username, hospitalCode string) string {
+	return username + "|" + hospitalCode
+}
 
-func (f *fakeRepository) Create(ctx context.Context, staff *domain.Staff) error {
+func (f *fakeRepository) Create(requestContext context.Context, staff *domain.Staff) error {
 	if f.CreateFn != nil {
-		return f.CreateFn(ctx, staff)
+		return f.CreateFn(requestContext, staff)
 	}
 	key := f.key(staff.Username, staff.Hospital)
 	if _, exists := f.store[key]; exists {
@@ -43,9 +45,9 @@ func (f *fakeRepository) Create(ctx context.Context, staff *domain.Staff) error 
 	return nil
 }
 
-func (f *fakeRepository) FindByUsernameAndHospital(ctx context.Context, username, hospitalCode string) (*domain.Staff, error) {
+func (f *fakeRepository) FindByUsernameAndHospital(requestContext context.Context, username, hospitalCode string) (*domain.Staff, error) {
 	if f.FindByUsernameAndHospitalFn != nil {
-		return f.FindByUsernameAndHospitalFn(ctx, username, hospitalCode)
+		return f.FindByUsernameAndHospitalFn(requestContext, username, hospitalCode)
 	}
 	staff, ok := f.store[f.key(username, hospitalCode)]
 	if !ok {
@@ -60,8 +62,8 @@ func TestCreate_Valid(t *testing.T) {
 	repo := newFakeRepository()
 	svc := application.NewService(repo, strings.Repeat("s", 32), time.Hour, bcrypt.MinCost, nil)
 
-	staff, err := svc.Create(context.Background(), "alice", "password12345", "Hospital-A")
-	require.NoError(t, err)
+	staff, operationError := svc.Create(context.Background(), "alice", "password12345", "Hospital-A")
+	require.NoError(t, operationError)
 	require.Equal(t, "alice", staff.Username)
 	require.Equal(t, "hospital-a", staff.Hospital)
 	require.NotEqual(t, "password12345", staff.PasswordHash)
@@ -73,10 +75,10 @@ func TestCreate_Duplicate(t *testing.T) {
 	repo := newFakeRepository()
 	svc := application.NewService(repo, strings.Repeat("s", 32), time.Hour, bcrypt.MinCost, nil)
 
-	_, err := svc.Create(context.Background(), "alice", "password12345", "hospital-a")
-	require.NoError(t, err)
-	_, err = svc.Create(context.Background(), "alice", "password12345", "hospital-a")
-	require.ErrorIs(t, err, platform.ErrConflict)
+	_, operationError := svc.Create(context.Background(), "alice", "password12345", "hospital-a")
+	require.NoError(t, operationError)
+	_, operationError = svc.Create(context.Background(), "alice", "password12345", "hospital-a")
+	require.ErrorIs(t, operationError, platform.ErrConflict)
 }
 
 func TestCreate_SameUsernameDifferentHospital(t *testing.T) {
@@ -84,17 +86,17 @@ func TestCreate_SameUsernameDifferentHospital(t *testing.T) {
 	repo := newFakeRepository()
 	svc := application.NewService(repo, strings.Repeat("s", 32), time.Hour, bcrypt.MinCost, nil)
 
-	_, err := svc.Create(context.Background(), "alice", "password12345", "hospital-a")
-	require.NoError(t, err)
-	_, err = svc.Create(context.Background(), "alice", "password12345", "hospital-b")
-	require.NoError(t, err)
+	_, operationError := svc.Create(context.Background(), "alice", "password12345", "hospital-a")
+	require.NoError(t, operationError)
+	_, operationError = svc.Create(context.Background(), "alice", "password12345", "hospital-b")
+	require.NoError(t, operationError)
 }
 
 func TestCreate_ShortPassword(t *testing.T) {
 	t.Parallel()
 	svc := application.NewService(newFakeRepository(), strings.Repeat("s", 32), time.Hour, bcrypt.MinCost, nil)
-	_, err := svc.Create(context.Background(), "alice", "short", "hospital-a")
-	require.ErrorIs(t, err, apperr.ErrInvalidInput)
+	_, operationError := svc.Create(context.Background(), "alice", "short", "hospital-a")
+	require.ErrorIs(t, operationError, apperr.ErrInvalidInput)
 }
 
 func TestLogin_Valid(t *testing.T) {
@@ -103,16 +105,16 @@ func TestLogin_Valid(t *testing.T) {
 	secret := strings.Repeat("s", 32)
 	svc := application.NewService(repo, secret, time.Hour, bcrypt.MinCost, nil)
 
-	_, err := svc.Create(context.Background(), "alice", "password12345", "hospital-a")
-	require.NoError(t, err)
+	_, operationError := svc.Create(context.Background(), "alice", "password12345", "hospital-a")
+	require.NoError(t, operationError)
 
-	result, err := svc.Login(context.Background(), "alice", "password12345", "hospital-a")
-	require.NoError(t, err)
+	result, operationError := svc.Login(context.Background(), "alice", "password12345", "hospital-a")
+	require.NoError(t, operationError)
 	require.NotEmpty(t, result.AccessToken)
 	require.Equal(t, int64(3600), result.ExpiresIn)
 
-	claims, err := platform.Parse(result.AccessToken, secret)
-	require.NoError(t, err)
+	claims, operationError := platform.Parse(result.AccessToken, secret)
+	require.NoError(t, operationError)
 	require.Equal(t, "hospital-a", claims.Hospital)
 	require.NotEmpty(t, claims.StaffID)
 }
@@ -121,8 +123,8 @@ func TestLogin_FailureModesIdentical(t *testing.T) {
 	t.Parallel()
 	repo := newFakeRepository()
 	svc := application.NewService(repo, strings.Repeat("s", 32), time.Hour, bcrypt.MinCost, nil)
-	_, err := svc.Create(context.Background(), "alice", "password12345", "hospital-a")
-	require.NoError(t, err)
+	_, operationError := svc.Create(context.Background(), "alice", "password12345", "hospital-a")
+	require.NoError(t, operationError)
 
 	cases := []struct {
 		name     string
@@ -138,9 +140,9 @@ func TestLogin_FailureModesIdentical(t *testing.T) {
 	errs := make([]error, 0, len(cases))
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := svc.Login(context.Background(), tc.username, tc.password, tc.hospital)
-			require.ErrorIs(t, err, platform.ErrUnauthorized)
-			errs = append(errs, err)
+			_, operationError := svc.Login(context.Background(), tc.username, tc.password, tc.hospital)
+			require.ErrorIs(t, operationError, platform.ErrUnauthorized)
+			errs = append(errs, operationError)
 		})
 	}
 	require.Len(t, errs, 3)
@@ -151,11 +153,11 @@ func TestLogin_FailureModesIdentical(t *testing.T) {
 func TestCreate_RepoError(t *testing.T) {
 	t.Parallel()
 	repo := newFakeRepository()
-	repo.CreateFn = func(ctx context.Context, staff *domain.Staff) error {
+	repo.CreateFn = func(requestContext context.Context, staff *domain.Staff) error {
 		return context.DeadlineExceeded
 	}
 	svc := application.NewService(repo, strings.Repeat("s", 32), time.Hour, bcrypt.MinCost, nil)
-	_, err := svc.Create(context.Background(), "alice", "password12345", "hospital-a")
-	require.Error(t, err)
-	require.NotErrorIs(t, err, platform.ErrConflict)
+	_, operationError := svc.Create(context.Background(), "alice", "password12345", "hospital-a")
+	require.Error(t, operationError)
+	require.NotErrorIs(t, operationError, platform.ErrConflict)
 }

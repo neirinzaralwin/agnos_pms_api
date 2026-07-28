@@ -36,8 +36,8 @@ const patientColumns = `
 // Upsert inserts or updates a patient under the given hospital identity.
 // Conflict target: (hospital, national_id) when national_id is present,
 // else (hospital, passport_id).
-func (r *Repository) Upsert(ctx context.Context, patient *domain.Patient) error {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+func (r *Repository) Upsert(requestContext context.Context, patient *domain.Patient) error {
+	requestContext, cancel := context.WithTimeout(requestContext, 3*time.Second)
 	defer cancel()
 
 	if patient.Hospital == "" {
@@ -52,7 +52,7 @@ func (r *Repository) Upsert(ctx context.Context, patient *domain.Patient) error 
 		query = upsertByPassportID
 	}
 
-	err := r.pool.QueryRow(ctx, query,
+	operationError := r.pool.QueryRow(requestContext, query,
 		patient.Hospital,
 		patient.FirstNameTH, patient.MiddleNameTH, patient.LastNameTH,
 		patient.FirstNameEN, patient.MiddleNameEN, patient.LastNameEN,
@@ -65,8 +65,8 @@ func (r *Repository) Upsert(ctx context.Context, patient *domain.Patient) error 
 		&patient.DateOfBirth, &patient.PatientHN, &patient.NationalID, &patient.PassportID,
 		&patient.PhoneNumber, &patient.Email, &patient.Gender, &patient.CreatedAt, &patient.UpdatedAt,
 	)
-	if err != nil {
-		return fmt.Errorf("upsert patient: %w", err)
+	if operationError != nil {
+		return fmt.Errorf("upsert patient: %w", operationError)
 	}
 	return nil
 }
@@ -111,8 +111,8 @@ const upsertByPassportID = upsertInsert + `
 
 // Search returns patients matching criteria, always scoped to hospitalCode.
 // hospitalCode is mandatory and never taken from criteria.
-func (r *Repository) Search(ctx context.Context, hospitalCode string, criteria domain.SearchCriteria) ([]domain.Patient, error) {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+func (r *Repository) Search(requestContext context.Context, hospitalCode string, criteria domain.SearchCriteria) ([]domain.Patient, error) {
+	requestContext, cancel := context.WithTimeout(requestContext, 3*time.Second)
 	defer cancel()
 
 	if hospitalCode == "" {
@@ -188,28 +188,28 @@ func (r *Repository) Search(ctx context.Context, hospitalCode string, criteria d
 	queryBuilder.WriteString(strconv.Itoa(paramIndex))
 	args = append(args, offset)
 
-	rows, err := r.pool.Query(ctx, queryBuilder.String(), args...)
-	if err != nil {
-		return nil, fmt.Errorf("search patients: %w", err)
+	rows, operationError := r.pool.Query(requestContext, queryBuilder.String(), args...)
+	if operationError != nil {
+		return nil, fmt.Errorf("search patients: %w", operationError)
 	}
 	defer rows.Close()
 
 	patients := make([]domain.Patient, 0)
 	for rows.Next() {
 		var patient domain.Patient
-		if err := rows.Scan(
+		if operationError := rows.Scan(
 			&patient.ID, &patient.Hospital,
 			&patient.FirstNameTH, &patient.MiddleNameTH, &patient.LastNameTH,
 			&patient.FirstNameEN, &patient.MiddleNameEN, &patient.LastNameEN,
 			&patient.DateOfBirth, &patient.PatientHN, &patient.NationalID, &patient.PassportID,
 			&patient.PhoneNumber, &patient.Email, &patient.Gender, &patient.CreatedAt, &patient.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan patient: %w", err)
+		); operationError != nil {
+			return nil, fmt.Errorf("scan patient: %w", operationError)
 		}
 		patients = append(patients, patient)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("search patients rows: %w", err)
+	if operationError := rows.Err(); operationError != nil {
+		return nil, fmt.Errorf("search patients rows: %w", operationError)
 	}
 	return patients, nil
 }

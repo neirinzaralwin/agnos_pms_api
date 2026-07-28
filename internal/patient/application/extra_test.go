@@ -14,10 +14,10 @@ import (
 func TestSearch_BadDate(t *testing.T) {
 	t.Parallel()
 	svc := application.NewService(&fakeRepository{}, &fakeHISClient{}, nil)
-	_, err := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
+	_, operationError := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
 		DateOfBirth: strPtr("not-a-date"),
 	})
-	require.ErrorIs(t, err, apperr.ErrInvalidInput)
+	require.ErrorIs(t, operationError, apperr.ErrInvalidInput)
 }
 
 func TestSearch_ANDFilters(t *testing.T) {
@@ -27,11 +27,11 @@ func TestSearch_ANDFilters(t *testing.T) {
 		{ID: "2", Hospital: "hospital-a", FirstNameEN: strPtr("Somchai"), Email: strPtr("other@b.com"), NationalID: strPtr("nid2")},
 	}}
 	svc := application.NewService(repo, &fakeHISClient{}, nil)
-	out, err := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
+	out, operationError := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
 		FirstName: strPtr("Somchai"),
 		Email:     strPtr("a@b.com"),
 	})
-	require.NoError(t, err)
+	require.NoError(t, operationError)
 	require.Len(t, out, 1)
 	require.Equal(t, "1", out[0].ID)
 }
@@ -39,13 +39,13 @@ func TestSearch_ANDFilters(t *testing.T) {
 func TestLookupFromHIS_EmptyHospital(t *testing.T) {
 	t.Parallel()
 	svc := application.NewService(&fakeRepository{}, &fakeHISClient{}, nil)
-	_, err := svc.LookupFromHIS(context.Background(), "", "ABC")
-	require.ErrorIs(t, err, apperr.ErrInvalidInput)
+	_, operationError := svc.LookupFromHIS(context.Background(), "", "ABC")
+	require.ErrorIs(t, operationError, apperr.ErrInvalidInput)
 }
 
 func TestSearch_EmptyHospital(t *testing.T) {
 	t.Parallel()
 	svc := application.NewService(&fakeRepository{}, &fakeHISClient{}, nil)
-	_, err := svc.Search(context.Background(), "", application.SearchFilter{Email: strPtr("a@b.com")})
-	require.ErrorIs(t, err, apperr.ErrInvalidInput)
+	_, operationError := svc.Search(context.Background(), "", application.SearchFilter{Email: strPtr("a@b.com")})
+	require.ErrorIs(t, operationError, apperr.ErrInvalidInput)
 }

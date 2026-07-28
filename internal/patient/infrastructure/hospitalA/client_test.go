@@ -26,11 +26,11 @@ func TestSearchByID_OK(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := hospitalA.New(srv.URL, 2*time.Second, nil)
-	require.NoError(t, err)
+	client, operationError := hospitalA.New(srv.URL, 2*time.Second, nil)
+	require.NoError(t, operationError)
 
-	patient, err := client.SearchByID(context.Background(), "1100700123456")
-	require.NoError(t, err)
+	patient, operationError := client.SearchByID(context.Background(), "1100700123456")
+	require.NoError(t, operationError)
 	require.NotNil(t, patient.NationalID)
 	require.Equal(t, "1100700123456", *patient.NationalID)
 	require.Equal(t, "M", *patient.Gender)
@@ -43,11 +43,11 @@ func TestSearchByID_NotFound(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := hospitalA.New(srv.URL, 2*time.Second, nil)
-	require.NoError(t, err)
+	client, operationError := hospitalA.New(srv.URL, 2*time.Second, nil)
+	require.NoError(t, operationError)
 
-	_, err = client.SearchByID(context.Background(), "MISSING")
-	require.ErrorIs(t, err, platform.ErrNotFound)
+	_, operationError = client.SearchByID(context.Background(), "MISSING")
+	require.ErrorIs(t, operationError, platform.ErrNotFound)
 }
 
 func TestSearchByID_Upstream500(t *testing.T) {
@@ -57,11 +57,11 @@ func TestSearchByID_Upstream500(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := hospitalA.New(srv.URL, 2*time.Second, nil)
-	require.NoError(t, err)
+	client, operationError := hospitalA.New(srv.URL, 2*time.Second, nil)
+	require.NoError(t, operationError)
 
-	_, err = client.SearchByID(context.Background(), "X")
-	require.ErrorIs(t, err, platform.ErrUpstream)
+	_, operationError = client.SearchByID(context.Background(), "X")
+	require.ErrorIs(t, operationError, platform.ErrUpstream)
 }
 
 func TestSearchByID_BadJSON(t *testing.T) {
@@ -72,11 +72,11 @@ func TestSearchByID_BadJSON(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := hospitalA.New(srv.URL, 2*time.Second, nil)
-	require.NoError(t, err)
+	client, operationError := hospitalA.New(srv.URL, 2*time.Second, nil)
+	require.NoError(t, operationError)
 
-	_, err = client.SearchByID(context.Background(), "X")
-	require.ErrorIs(t, err, platform.ErrUpstream)
+	_, operationError = client.SearchByID(context.Background(), "X")
+	require.ErrorIs(t, operationError, platform.ErrUpstream)
 }
 
 func TestSearchByID_Timeout(t *testing.T) {
@@ -87,11 +87,11 @@ func TestSearchByID_Timeout(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := hospitalA.New(srv.URL, 50*time.Millisecond, nil)
-	require.NoError(t, err)
+	client, operationError := hospitalA.New(srv.URL, 50*time.Millisecond, nil)
+	require.NoError(t, operationError)
 
-	_, err = client.SearchByID(context.Background(), "X")
-	require.ErrorIs(t, err, platform.ErrUpstream)
+	_, operationError = client.SearchByID(context.Background(), "X")
+	require.ErrorIs(t, operationError, platform.ErrUpstream)
 }
 
 func TestSearchByID_InvalidID(t *testing.T) {
@@ -103,11 +103,11 @@ func TestSearchByID_InvalidID(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := hospitalA.New(srv.URL, 2*time.Second, nil)
-	require.NoError(t, err)
+	client, operationError := hospitalA.New(srv.URL, 2*time.Second, nil)
+	require.NoError(t, operationError)
 
-	_, err = client.SearchByID(context.Background(), "bad id!")
-	require.ErrorIs(t, err, apperr.ErrInvalidInput)
+	_, operationError = client.SearchByID(context.Background(), "bad id!")
+	require.ErrorIs(t, operationError, apperr.ErrInvalidInput)
 	require.False(t, called)
 }
 

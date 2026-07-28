@@ -96,8 +96,8 @@ func TestRateLimitByStaff(t *testing.T) {
 	r.Use(middleware.RequestID(), middleware.Auth(secret), middleware.RateLimitByStaff(limiter))
 	r.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
 
-	tok, err := issueTestToken(secret)
-	require.NoError(t, err)
+	tok, operationError := issueTestToken(secret)
+	require.NoError(t, operationError)
 
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)

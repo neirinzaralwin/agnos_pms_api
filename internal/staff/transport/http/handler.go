@@ -16,8 +16,8 @@ import (
 
 // Service is the staff application port used by this handler.
 type Service interface {
-	Create(ctx context.Context, username, password, hospital string) (*domain.Staff, error)
-	Login(ctx context.Context, username, password, hospital string) (*application.LoginResult, error)
+	Create(requestContext context.Context, username, password, hospital string) (*domain.Staff, error)
+	Login(requestContext context.Context, username, password, hospital string) (*application.LoginResult, error)
 }
 
 // Handler serves the staff HTTP endpoints.
@@ -33,14 +33,14 @@ func NewHandler(svc Service) *Handler {
 // Create handles POST /staff/create.
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpkit.WriteBindError(c, err)
+	if operationError := c.ShouldBindJSON(&req); operationError != nil {
+		httpkit.WriteBindError(c, operationError)
 		return
 	}
 
-	staff, err := h.svc.Create(c.Request.Context(), req.Username, req.Password, req.Hospital)
-	if err != nil {
-		httpkit.MapError(c, err)
+	staff, operationError := h.svc.Create(c.Request.Context(), req.Username, req.Password, req.Hospital)
+	if operationError != nil {
+		httpkit.MapError(c, operationError)
 		return
 	}
 
@@ -50,14 +50,14 @@ func (h *Handler) Create(c *gin.Context) {
 // Login handles POST /staff/login.
 func (h *Handler) Login(c *gin.Context) {
 	var req LoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpkit.WriteBindError(c, err)
+	if operationError := c.ShouldBindJSON(&req); operationError != nil {
+		httpkit.WriteBindError(c, operationError)
 		return
 	}
 
-	result, err := h.svc.Login(c.Request.Context(), req.Username, req.Password, req.Hospital)
-	if err != nil {
-		httpkit.MapError(c, err)
+	result, operationError := h.svc.Login(c.Request.Context(), req.Username, req.Password, req.Hospital)
+	if operationError != nil {
+		httpkit.MapError(c, operationError)
 		return
 	}
 

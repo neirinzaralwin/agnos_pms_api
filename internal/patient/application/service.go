@@ -1,11 +1,8 @@
-// Package application orchestrates patient use cases: HIS lookup-and-upsert,
-// and hospital-scoped local search. It depends on domain ports only — never
-// on Gin, pgx, or the HIS transport package directly.
 package application
 
 import (
-	"errors"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -33,36 +30,36 @@ func NewService(repo domain.Repository, his domain.HISClient, log *slog.Logger) 
 // LookupFromHIS fetches a patient from HIS, registers it under the caller's
 // hospital, upserts it, and returns the stored record. Never called from the
 // local-search path — see Search below.
-func (s *Service) LookupFromHIS(ctx context.Context, hospitalCode, lookupID string) (*domain.Patient, error) {
-	validHospital, err := hospital.Parse(hospitalCode)
-	if err != nil {
-		return nil, err
+func (s *Service) LookupFromHIS(requestContext context.Context, hospitalCode, lookupID string) (*domain.Patient, error) {
+	validHospital, operationError := hospital.Parse(hospitalCode)
+	if operationError != nil {
+		return nil, operationError
 	}
-	validLookupID, err := domain.ParseLookupID(lookupID)
-	if err != nil {
-		return nil, err
+	validLookupID, operationError := domain.ParseLookupID(lookupID)
+	if operationError != nil {
+		return nil, operationError
 	}
 
-	hisPatient, err := s.his.SearchByID(ctx, validLookupID.String())
-	if err != nil {
-		if errors.Is(err, platform.ErrNotFound) {
+	hisPatient, operationError := s.his.SearchByID(requestContext, validLookupID.String())
+	if operationError != nil {
+		if errors.Is(operationError, platform.ErrNotFound) {
 			return nil, platform.ErrNotFound
 		}
-		if errors.Is(err, apperr.ErrInvalidInput) {
-			return nil, err
+		if errors.Is(operationError, apperr.ErrInvalidInput) {
+			return nil, operationError
 		}
-		if errors.Is(err, platform.ErrUpstream) {
-			return nil, err
+		if errors.Is(operationError, platform.ErrUpstream) {
+			return nil, operationError
 		}
-		return nil, fmt.Errorf("%w: %v", platform.ErrUpstream, err)
+		return nil, fmt.Errorf("%w: %v", platform.ErrUpstream, operationError)
 	}
 
-	patient, err := domain.RegisterFromHIS(validHospital, *hisPatient)
-	if err != nil {
-		return nil, err
+	patient, operationError := domain.RegisterFromHIS(validHospital, *hisPatient)
+	if operationError != nil {
+		return nil, operationError
 	}
-	if err := s.repo.Upsert(ctx, patient); err != nil {
-		return nil, fmt.Errorf("upsert patient: %w", err)
+	if operationError := s.repo.Upsert(requestContext, patient); operationError != nil {
+		return nil, fmt.Errorf("upsert patient: %w", operationError)
 	}
 	return patient, nil
 }
@@ -72,19 +69,19 @@ type SearchFilter = domain.SearchCriteriaInput
 
 // Search queries local patients scoped to hospitalCode. Never calls HIS —
 // upstream latency and outages must not degrade this path.
-func (s *Service) Search(ctx context.Context, hospitalCode string, filter SearchFilter) ([]domain.Patient, error) {
-	validHospital, err := hospital.Parse(hospitalCode)
-	if err != nil {
-		return nil, err
+func (s *Service) Search(requestContext context.Context, hospitalCode string, filter SearchFilter) ([]domain.Patient, error) {
+	validHospital, operationError := hospital.Parse(hospitalCode)
+	if operationError != nil {
+		return nil, operationError
 	}
-	criteria, err := domain.ParseSearchCriteria(filter)
-	if err != nil {
-		return nil, err
+	criteria, operationError := domain.ParseSearchCriteria(filter)
+	if operationError != nil {
+		return nil, operationError
 	}
 
-	patients, err := s.repo.Search(ctx, validHospital.String(), criteria)
-	if err != nil {
-		return nil, fmt.Errorf("search patients: %w", err)
+	patients, operationError := s.repo.Search(requestContext, validHospital.String(), criteria)
+	if operationError != nil {
+		return nil, fmt.Errorf("search patients: %w", operationError)
 	}
 	if patients == nil {
 		patients = []domain.Patient{}

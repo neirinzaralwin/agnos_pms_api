@@ -73,7 +73,7 @@ func RegisterFromHIS(hospitalCode hospital.Code, data HISPatientData) (*Patient,
 		Gender:       ParseGender(data.Gender).Ptr(),
 	}
 	if data.DateOfBirth != nil && strings.TrimSpace(*data.DateOfBirth) != "" {
-		if parsedDOB, err := time.Parse("2006-01-02", strings.TrimSpace(*data.DateOfBirth)); err == nil {
+		if parsedDOB, operationError := time.Parse("2006-01-02", strings.TrimSpace(*data.DateOfBirth)); operationError == nil {
 			patient.DateOfBirth = &parsedDOB
 		}
 	}

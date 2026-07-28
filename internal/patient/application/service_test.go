@@ -14,16 +14,16 @@ import (
 )
 
 type fakeRepository struct {
-	UpsertFn func(ctx context.Context, patient *domain.Patient) error
-	SearchFn func(ctx context.Context, hospitalCode string, criteria domain.SearchCriteria) ([]domain.Patient, error)
+	UpsertFn func(requestContext context.Context, patient *domain.Patient) error
+	SearchFn func(requestContext context.Context, hospitalCode string, criteria domain.SearchCriteria) ([]domain.Patient, error)
 	patients []domain.Patient
 	upsertN  int
 }
 
-func (f *fakeRepository) Upsert(ctx context.Context, patient *domain.Patient) error {
+func (f *fakeRepository) Upsert(requestContext context.Context, patient *domain.Patient) error {
 	f.upsertN++
 	if f.UpsertFn != nil {
-		return f.UpsertFn(ctx, patient)
+		return f.UpsertFn(requestContext, patient)
 	}
 	if patient.ID == "" {
 		patient.ID = "p-1"
@@ -46,9 +46,9 @@ func (f *fakeRepository) Upsert(ctx context.Context, patient *domain.Patient) er
 	return nil
 }
 
-func (f *fakeRepository) Search(ctx context.Context, hospitalCode string, criteria domain.SearchCriteria) ([]domain.Patient, error) {
+func (f *fakeRepository) Search(requestContext context.Context, hospitalCode string, criteria domain.SearchCriteria) ([]domain.Patient, error) {
 	if f.SearchFn != nil {
-		return f.SearchFn(ctx, hospitalCode, criteria)
+		return f.SearchFn(requestContext, hospitalCode, criteria)
 	}
 	out := make([]domain.Patient, 0)
 	for _, patient := range f.patients {
@@ -80,16 +80,16 @@ func (f *fakeRepository) Search(ctx context.Context, hospitalCode string, criter
 }
 
 type fakeHISClient struct {
-	SearchByIDFn func(ctx context.Context, lookupID string) (*domain.HISPatientData, error)
+	SearchByIDFn func(requestContext context.Context, lookupID string) (*domain.HISPatientData, error)
 	called       int
 	lastID       string
 }
 
-func (f *fakeHISClient) SearchByID(ctx context.Context, lookupID string) (*domain.HISPatientData, error) {
+func (f *fakeHISClient) SearchByID(requestContext context.Context, lookupID string) (*domain.HISPatientData, error) {
 	f.called++
 	f.lastID = lookupID
 	if f.SearchByIDFn != nil {
-		return f.SearchByIDFn(ctx, lookupID)
+		return f.SearchByIDFn(requestContext, lookupID)
 	}
 	return nil, platform.ErrNotFound
 }
@@ -100,7 +100,7 @@ func TestLookupFromHIS_UpsertsWithCallerHospital(t *testing.T) {
 	t.Parallel()
 	repo := &fakeRepository{}
 	his := &fakeHISClient{
-		SearchByIDFn: func(ctx context.Context, lookupID string) (*domain.HISPatientData, error) {
+		SearchByIDFn: func(requestContext context.Context, lookupID string) (*domain.HISPatientData, error) {
 			return &domain.HISPatientData{
 				FirstNameEN: strPtr("Somchai"),
 				LastNameEN:  strPtr("Jaidee"),
@@ -112,8 +112,8 @@ func TestLookupFromHIS_UpsertsWithCallerHospital(t *testing.T) {
 	}
 	svc := application.NewService(repo, his, nil)
 
-	patient, err := svc.LookupFromHIS(context.Background(), "hospital-a", "1100700123456")
-	require.NoError(t, err)
+	patient, operationError := svc.LookupFromHIS(context.Background(), "hospital-a", "1100700123456")
+	require.NoError(t, operationError)
 	require.Equal(t, "hospital-a", patient.Hospital)
 	require.Equal(t, "Somchai", *patient.FirstNameEN)
 	require.Equal(t, 1, repo.upsertN)
@@ -124,7 +124,7 @@ func TestLookupFromHIS_SecondLookupUpdates(t *testing.T) {
 	repo := &fakeRepository{}
 	callCount := 0
 	his := &fakeHISClient{
-		SearchByIDFn: func(ctx context.Context, lookupID string) (*domain.HISPatientData, error) {
+		SearchByIDFn: func(requestContext context.Context, lookupID string) (*domain.HISPatientData, error) {
 			callCount++
 			name := "First"
 			if callCount > 1 {
@@ -139,10 +139,10 @@ func TestLookupFromHIS_SecondLookupUpdates(t *testing.T) {
 	}
 	svc := application.NewService(repo, his, nil)
 
-	first, err := svc.LookupFromHIS(context.Background(), "hospital-a", "1100700123456")
-	require.NoError(t, err)
-	second, err := svc.LookupFromHIS(context.Background(), "hospital-a", "1100700123456")
-	require.NoError(t, err)
+	first, operationError := svc.LookupFromHIS(context.Background(), "hospital-a", "1100700123456")
+	require.NoError(t, operationError)
+	second, operationError := svc.LookupFromHIS(context.Background(), "hospital-a", "1100700123456")
+	require.NoError(t, operationError)
 	require.Equal(t, first.ID, second.ID)
 	require.Equal(t, "Updated", *second.FirstNameEN)
 	require.Len(t, repo.patients, 1)
@@ -153,8 +153,8 @@ func TestLookupFromHIS_InvalidID_NeverCallsHIS(t *testing.T) {
 	his := &fakeHISClient{}
 	svc := application.NewService(&fakeRepository{}, his, nil)
 
-	_, err := svc.LookupFromHIS(context.Background(), "hospital-a", "bad id!")
-	require.ErrorIs(t, err, apperr.ErrInvalidInput)
+	_, operationError := svc.LookupFromHIS(context.Background(), "hospital-a", "bad id!")
+	require.ErrorIs(t, operationError, apperr.ErrInvalidInput)
 	require.Equal(t, 0, his.called)
 }
 
@@ -162,7 +162,7 @@ func TestLookupFromHIS_OddGenderBecomesNil(t *testing.T) {
 	t.Parallel()
 	repo := &fakeRepository{}
 	his := &fakeHISClient{
-		SearchByIDFn: func(ctx context.Context, lookupID string) (*domain.HISPatientData, error) {
+		SearchByIDFn: func(requestContext context.Context, lookupID string) (*domain.HISPatientData, error) {
 			return &domain.HISPatientData{
 				NationalID: strPtr(lookupID),
 				Gender:     strPtr("X"),
@@ -170,29 +170,29 @@ func TestLookupFromHIS_OddGenderBecomesNil(t *testing.T) {
 		},
 	}
 	svc := application.NewService(repo, his, nil)
-	patient, err := svc.LookupFromHIS(context.Background(), "hospital-a", "ODDGENDER")
-	require.NoError(t, err)
+	patient, operationError := svc.LookupFromHIS(context.Background(), "hospital-a", "ODDGENDER")
+	require.NoError(t, operationError)
 	require.Nil(t, patient.Gender)
 }
 
 func TestLookupFromHIS_NotFound(t *testing.T) {
 	t.Parallel()
-	his := &fakeHISClient{SearchByIDFn: func(ctx context.Context, lookupID string) (*domain.HISPatientData, error) {
+	his := &fakeHISClient{SearchByIDFn: func(requestContext context.Context, lookupID string) (*domain.HISPatientData, error) {
 		return nil, platform.ErrNotFound
 	}}
 	svc := application.NewService(&fakeRepository{}, his, nil)
-	_, err := svc.LookupFromHIS(context.Background(), "hospital-a", "MISSING")
-	require.ErrorIs(t, err, platform.ErrNotFound)
+	_, operationError := svc.LookupFromHIS(context.Background(), "hospital-a", "MISSING")
+	require.ErrorIs(t, operationError, platform.ErrNotFound)
 }
 
 func TestLookupFromHIS_Upstream(t *testing.T) {
 	t.Parallel()
-	his := &fakeHISClient{SearchByIDFn: func(ctx context.Context, lookupID string) (*domain.HISPatientData, error) {
+	his := &fakeHISClient{SearchByIDFn: func(requestContext context.Context, lookupID string) (*domain.HISPatientData, error) {
 		return nil, platform.ErrUpstream
 	}}
 	svc := application.NewService(&fakeRepository{}, his, nil)
-	_, err := svc.LookupFromHIS(context.Background(), "hospital-a", "X")
-	require.ErrorIs(t, err, platform.ErrUpstream)
+	_, operationError := svc.LookupFromHIS(context.Background(), "hospital-a", "X")
+	require.ErrorIs(t, operationError, platform.ErrUpstream)
 }
 
 func TestSearch_SingleFilter(t *testing.T) {
@@ -202,10 +202,10 @@ func TestSearch_SingleFilter(t *testing.T) {
 	}}
 	svc := application.NewService(repo, &fakeHISClient{}, nil)
 
-	out, err := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
+	out, operationError := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
 		NationalID: strPtr("1100700123456"),
 	})
-	require.NoError(t, err)
+	require.NoError(t, operationError)
 	require.Len(t, out, 1)
 }
 
@@ -216,10 +216,10 @@ func TestSearch_DoesNotReturnPatientsFromAnotherHospital(t *testing.T) {
 	}}
 	svc := application.NewService(repo, &fakeHISClient{}, nil)
 
-	out, err := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
+	out, operationError := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
 		NationalID: strPtr("1100700123456"),
 	})
-	require.NoError(t, err)
+	require.NoError(t, operationError)
 	require.Empty(t, out)
 }
 
@@ -232,10 +232,10 @@ func TestSearch_IgnoresBodyHospital(t *testing.T) {
 	}}
 	svc := application.NewService(repo, &fakeHISClient{}, nil)
 
-	out, err := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
+	out, operationError := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
 		Email: strPtr("a@example.com"),
 	})
-	require.NoError(t, err)
+	require.NoError(t, operationError)
 	require.Len(t, out, 1)
 	require.Equal(t, "hospital-a", out[0].Hospital)
 }
@@ -243,17 +243,17 @@ func TestSearch_IgnoresBodyHospital(t *testing.T) {
 func TestSearch_NoFilters(t *testing.T) {
 	t.Parallel()
 	svc := application.NewService(&fakeRepository{}, &fakeHISClient{}, nil)
-	_, err := svc.Search(context.Background(), "hospital-a", application.SearchFilter{})
-	require.ErrorIs(t, err, apperr.ErrInvalidInput)
+	_, operationError := svc.Search(context.Background(), "hospital-a", application.SearchFilter{})
+	require.ErrorIs(t, operationError, apperr.ErrInvalidInput)
 }
 
 func TestSearch_EmptySliceNotNil(t *testing.T) {
 	t.Parallel()
 	svc := application.NewService(&fakeRepository{}, &fakeHISClient{}, nil)
-	out, err := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
+	out, operationError := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
 		Email: strPtr("none@example.com"),
 	})
-	require.NoError(t, err)
+	require.NoError(t, operationError)
 	require.NotNil(t, out)
 	require.Len(t, out, 0)
 }
@@ -271,11 +271,11 @@ func TestSearch_ResultCap(t *testing.T) {
 	repo := &fakeRepository{patients: patients}
 	svc := application.NewService(repo, &fakeHISClient{}, nil)
 	limit := 5
-	out, err := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
+	out, operationError := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
 		Email: strPtr("same@example.com"),
 		Limit: &limit,
 	})
-	require.NoError(t, err)
+	require.NoError(t, operationError)
 	require.Len(t, out, 5)
 }
 
@@ -286,23 +286,23 @@ func TestSearch_SQLMetacharactersLiteral(t *testing.T) {
 		{ID: "1", Hospital: "hospital-a", FirstNameEN: strPtr("Normal")},
 	}}
 	svc := application.NewService(repo, &fakeHISClient{}, nil)
-	out, err := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
+	out, operationError := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
 		FirstName: &evil,
 	})
-	require.NoError(t, err)
+	require.NoError(t, operationError)
 	require.Empty(t, out)
 }
 
 func TestSearch_RepoError(t *testing.T) {
 	t.Parallel()
 	repo := &fakeRepository{
-		SearchFn: func(ctx context.Context, hospitalCode string, criteria domain.SearchCriteria) ([]domain.Patient, error) {
+		SearchFn: func(requestContext context.Context, hospitalCode string, criteria domain.SearchCriteria) ([]domain.Patient, error) {
 			return nil, context.DeadlineExceeded
 		},
 	}
 	svc := application.NewService(repo, &fakeHISClient{}, nil)
-	_, err := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
+	_, operationError := svc.Search(context.Background(), "hospital-a", application.SearchFilter{
 		Email: strPtr("a@b.com"),
 	})
-	require.Error(t, err)
+	require.Error(t, operationError)
 }

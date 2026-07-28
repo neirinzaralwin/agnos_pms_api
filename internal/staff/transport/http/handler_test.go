@@ -24,21 +24,21 @@ func init() {
 }
 
 type stubService struct {
-	CreateFn func(ctx context.Context, username, password, hospital string) (*domain.Staff, error)
-	LoginFn  func(ctx context.Context, username, password, hospital string) (*application.LoginResult, error)
+	CreateFn func(requestContext context.Context, username, password, hospital string) (*domain.Staff, error)
+	LoginFn  func(requestContext context.Context, username, password, hospital string) (*application.LoginResult, error)
 }
 
-func (s *stubService) Create(ctx context.Context, username, password, hospital string) (*domain.Staff, error) {
-	return s.CreateFn(ctx, username, password, hospital)
+func (s *stubService) Create(requestContext context.Context, username, password, hospital string) (*domain.Staff, error) {
+	return s.CreateFn(requestContext, username, password, hospital)
 }
-func (s *stubService) Login(ctx context.Context, username, password, hospital string) (*application.LoginResult, error) {
-	return s.LoginFn(ctx, username, password, hospital)
+func (s *stubService) Login(requestContext context.Context, username, password, hospital string) (*application.LoginResult, error) {
+	return s.LoginFn(requestContext, username, password, hospital)
 }
 
 func TestCreate_Handler(t *testing.T) {
 	t.Parallel()
 	svc := &stubService{
-		CreateFn: func(ctx context.Context, username, password, hospital string) (*domain.Staff, error) {
+		CreateFn: func(requestContext context.Context, username, password, hospital string) (*domain.Staff, error) {
 			return &domain.Staff{
 				ID: "s1", Username: username, Hospital: hospital,
 				CreatedAt: time.Now(), UpdatedAt: time.Now(),
@@ -63,7 +63,7 @@ func TestCreate_Handler(t *testing.T) {
 func TestCreate_Conflict(t *testing.T) {
 	t.Parallel()
 	svc := &stubService{
-		CreateFn: func(ctx context.Context, username, password, hospital string) (*domain.Staff, error) {
+		CreateFn: func(requestContext context.Context, username, password, hospital string) (*domain.Staff, error) {
 			return nil, platform.ErrConflict
 		},
 	}
@@ -125,7 +125,7 @@ func TestCreate_ShortPassword(t *testing.T) {
 func TestCreate_RepoError(t *testing.T) {
 	t.Parallel()
 	svc := &stubService{
-		CreateFn: func(ctx context.Context, username, password, hospital string) (*domain.Staff, error) {
+		CreateFn: func(requestContext context.Context, username, password, hospital string) (*domain.Staff, error) {
 			return nil, context.DeadlineExceeded
 		},
 	}
@@ -146,11 +146,11 @@ func TestCreate_RepoError(t *testing.T) {
 func TestLogin_Handler(t *testing.T) {
 	t.Parallel()
 	secret := strings.Repeat("s", 32)
-	token, err := platform.Issue(platform.TokenClaims{StaffID: "s1", Hospital: "hospital-a"}, secret, time.Hour, time.Now())
-	require.NoError(t, err)
+	token, operationError := platform.Issue(platform.TokenClaims{StaffID: "s1", Hospital: "hospital-a"}, secret, time.Hour, time.Now())
+	require.NoError(t, operationError)
 
 	svc := &stubService{
-		LoginFn: func(ctx context.Context, username, password, hospital string) (*application.LoginResult, error) {
+		LoginFn: func(requestContext context.Context, username, password, hospital string) (*application.LoginResult, error) {
 			return &application.LoginResult{AccessToken: token, ExpiresIn: 3600}, nil
 		},
 	}
@@ -175,7 +175,7 @@ func TestLogin_Handler(t *testing.T) {
 func TestLogin_UnauthorizedIdenticalBodies(t *testing.T) {
 	t.Parallel()
 	svc := &stubService{
-		LoginFn: func(ctx context.Context, username, password, hospital string) (*application.LoginResult, error) {
+		LoginFn: func(requestContext context.Context, username, password, hospital string) (*application.LoginResult, error) {
 			return nil, platform.ErrUnauthorized
 		},
 	}

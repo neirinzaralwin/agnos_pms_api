@@ -54,34 +54,34 @@ func (s *Service) SetLoginLimiter(limiter LoginLimiter) {
 }
 
 // Create registers a new staff member.
-func (s *Service) Create(ctx context.Context, username, password, hospitalCode string) (*domain.Staff, error) {
-	validUsername, err := domain.ParseUsername(username)
-	if err != nil {
-		return nil, err
+func (s *Service) Create(requestContext context.Context, username, password, hospitalCode string) (*domain.Staff, error) {
+	validUsername, operationError := domain.ParseUsername(username)
+	if operationError != nil {
+		return nil, operationError
 	}
-	validHospital, err := hospital.Parse(hospitalCode)
-	if err != nil {
-		return nil, err
+	validHospital, operationError := hospital.Parse(hospitalCode)
+	if operationError != nil {
+		return nil, operationError
 	}
-	validPassword, err := domain.ParsePassword(password)
-	if err != nil {
-		return nil, err
-	}
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(validPassword.String()), s.bcryptCost)
-	if err != nil {
-		return nil, fmt.Errorf("hash password: %w", err)
+	validPassword, operationError := domain.ParsePassword(password)
+	if operationError != nil {
+		return nil, operationError
 	}
 
-	staff, err := domain.New(validUsername, validHospital, string(hash))
-	if err != nil {
-		return nil, err
+	hash, operationError := bcrypt.GenerateFromPassword([]byte(validPassword.String()), s.bcryptCost)
+	if operationError != nil {
+		return nil, fmt.Errorf("hash password: %w", operationError)
 	}
-	if err := s.repo.Create(ctx, staff); err != nil {
-		if errors.Is(err, platform.ErrConflict) {
+
+	staff, operationError := domain.New(validUsername, validHospital, string(hash))
+	if operationError != nil {
+		return nil, operationError
+	}
+	if operationError := s.repo.Create(requestContext, staff); operationError != nil {
+		if errors.Is(operationError, platform.ErrConflict) {
 			return nil, platform.ErrConflict
 		}
-		return nil, fmt.Errorf("create staff: %w", err)
+		return nil, fmt.Errorf("create staff: %w", operationError)
 	}
 	return staff, nil
 }
@@ -98,23 +98,23 @@ type LoginResult struct {
 var dummyHash = mustHash("dummy-password-for-timing")
 
 func mustHash(password string) string {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
-	if err != nil {
-		panic(err)
+	hash, operationError := bcrypt.GenerateFromPassword([]byte(password), 10)
+	if operationError != nil {
+		panic(operationError)
 	}
 	return string(hash)
 }
 
 // Login authenticates a staff member. Unknown user, wrong hospital, and
 // wrong password all return the same platform.ErrUnauthorized.
-func (s *Service) Login(ctx context.Context, username, password, hospitalCode string) (*LoginResult, error) {
-	validUsername, err := domain.ParseUsername(username)
-	if err != nil {
-		return nil, err
+func (s *Service) Login(requestContext context.Context, username, password, hospitalCode string) (*LoginResult, error) {
+	validUsername, operationError := domain.ParseUsername(username)
+	if operationError != nil {
+		return nil, operationError
 	}
-	validHospital, err := hospital.Parse(hospitalCode)
-	if err != nil {
-		return nil, err
+	validHospital, operationError := hospital.Parse(hospitalCode)
+	if operationError != nil {
+		return nil, operationError
 	}
 
 	if s.loginLimiter != nil {
@@ -124,26 +124,26 @@ func (s *Service) Login(ctx context.Context, username, password, hospitalCode st
 		}
 	}
 
-	staff, err := s.repo.FindByUsernameAndHospital(ctx, validUsername.String(), validHospital.String())
-	if err != nil {
-		if errors.Is(err, platform.ErrNotFound) {
+	staff, operationError := s.repo.FindByUsernameAndHospital(requestContext, validUsername.String(), validHospital.String())
+	if operationError != nil {
+		if errors.Is(operationError, platform.ErrNotFound) {
 			_ = bcrypt.CompareHashAndPassword([]byte(dummyHash), []byte(password))
 			return nil, platform.ErrUnauthorized
 		}
-		return nil, fmt.Errorf("login: %w", err)
+		return nil, fmt.Errorf("login: %w", operationError)
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(staff.PasswordHash), []byte(password)); err != nil {
+	if operationError := bcrypt.CompareHashAndPassword([]byte(staff.PasswordHash), []byte(password)); operationError != nil {
 		return nil, platform.ErrUnauthorized
 	}
 
 	issuedAt := s.now()
-	token, err := platform.Issue(platform.TokenClaims{
+	token, operationError := platform.Issue(platform.TokenClaims{
 		StaffID:  staff.ID,
 		Hospital: staff.Hospital,
 	}, s.jwtSecret, s.jwtTTL, issuedAt)
-	if err != nil {
-		return nil, fmt.Errorf("issue token: %w", err)
+	if operationError != nil {
+		return nil, fmt.Errorf("issue token: %w", operationError)
 	}
 
 	return &LoginResult{

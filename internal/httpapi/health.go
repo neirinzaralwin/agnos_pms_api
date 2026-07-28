@@ -26,10 +26,10 @@ func (h *Health) Healthz(c *gin.Context) {
 
 // Readyz checks database reachability.
 func (h *Health) Readyz(c *gin.Context) {
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+	requestContext, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
 	defer cancel()
 
-	if err := h.pool.Ping(ctx); err != nil {
+	if operationError := h.pool.Ping(requestContext); operationError != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"status":     "unavailable",
 			"dependency": "postgres",

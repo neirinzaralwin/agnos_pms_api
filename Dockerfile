@@ -11,6 +11,7 @@ RUN go mod download
 
 COPY cmd ./cmd
 COPY internal ./internal
+COPY docs ./docs
 
 ARG VERSION=dev
 

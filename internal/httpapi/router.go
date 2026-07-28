@@ -21,6 +21,7 @@ type RouterDeps struct {
 	Pool           *pgxpool.Pool
 	Env            string
 	JWTSecret      string
+	EnableDocs     bool
 	StaffHandler   *stafftransport.Handler
 	PatientHandler *patienttransport.Handler
 	LoginLimiter   *middleware.FixedWindowLimiter
@@ -48,6 +49,10 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	health := NewHealth(deps.Pool)
 	engine.GET("/healthz", health.Healthz)
 	engine.GET("/readyz", health.Readyz)
+
+	if deps.EnableDocs {
+		registerDocs(engine)
+	}
 
 	staff := engine.Group("/staff")
 	{

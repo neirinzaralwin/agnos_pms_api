@@ -26,15 +26,15 @@ func init() {
 }
 
 type stubService struct {
-	LookupFn func(ctx context.Context, hospital, lookupID string) (*domain.Patient, error)
-	SearchFn func(ctx context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error)
+	LookupFn func(requestContext context.Context, hospital, lookupID string) (*domain.Patient, error)
+	SearchFn func(requestContext context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error)
 }
 
-func (s *stubService) LookupFromHIS(ctx context.Context, hospital, lookupID string) (*domain.Patient, error) {
-	return s.LookupFn(ctx, hospital, lookupID)
+func (s *stubService) LookupFromHIS(requestContext context.Context, hospital, lookupID string) (*domain.Patient, error) {
+	return s.LookupFn(requestContext, hospital, lookupID)
 }
-func (s *stubService) Search(ctx context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error) {
-	return s.SearchFn(ctx, hospital, filter)
+func (s *stubService) Search(requestContext context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error) {
+	return s.SearchFn(requestContext, hospital, filter)
 }
 
 func strPtr(s string) *string { return &s }
@@ -51,8 +51,8 @@ func authedRouter(secret string, h *patienttransport.Handler) *gin.Engine {
 
 func bearer(t *testing.T, secret, staffID, hospital string) string {
 	t.Helper()
-	tok, err := platform.Issue(platform.TokenClaims{StaffID: staffID, Hospital: hospital}, secret, time.Hour, time.Now())
-	require.NoError(t, err)
+	tok, operationError := platform.Issue(platform.TokenClaims{StaffID: staffID, Hospital: hospital}, secret, time.Hour, time.Now())
+	require.NoError(t, operationError)
 	return tok
 }
 
@@ -60,7 +60,7 @@ func TestLookup_OK(t *testing.T) {
 	t.Parallel()
 	secret := strings.Repeat("s", 32)
 	svc := &stubService{
-		LookupFn: func(ctx context.Context, hospital, lookupID string) (*domain.Patient, error) {
+		LookupFn: func(requestContext context.Context, hospital, lookupID string) (*domain.Patient, error) {
 			require.Equal(t, "hospital-a", hospital)
 			return &domain.Patient{
 				ID: "p1", Hospital: hospital, NationalID: strPtr(lookupID),
@@ -92,8 +92,8 @@ func TestLookup_NoToken(t *testing.T) {
 func TestLookup_ExpiredToken(t *testing.T) {
 	t.Parallel()
 	secret := strings.Repeat("s", 32)
-	tok, err := platform.Issue(platform.TokenClaims{StaffID: "s1", Hospital: "hospital-a"}, secret, time.Minute, time.Now().Add(-2*time.Hour))
-	require.NoError(t, err)
+	tok, operationError := platform.Issue(platform.TokenClaims{StaffID: "s1", Hospital: "hospital-a"}, secret, time.Minute, time.Now().Add(-2*time.Hour))
+	require.NoError(t, operationError)
 	r := authedRouter(secret, patienttransport.NewHandler(&stubService{}, nil))
 	req := httptest.NewRequest(http.MethodGet, "/patient/search/1100700123456", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
@@ -106,7 +106,7 @@ func TestLookup_HIS404(t *testing.T) {
 	t.Parallel()
 	secret := strings.Repeat("s", 32)
 	svc := &stubService{
-		LookupFn: func(ctx context.Context, hospital, lookupID string) (*domain.Patient, error) {
+		LookupFn: func(requestContext context.Context, hospital, lookupID string) (*domain.Patient, error) {
 			return nil, platform.ErrNotFound
 		},
 	}
@@ -122,7 +122,7 @@ func TestLookup_HIS502(t *testing.T) {
 	t.Parallel()
 	secret := strings.Repeat("s", 32)
 	svc := &stubService{
-		LookupFn: func(ctx context.Context, hospital, lookupID string) (*domain.Patient, error) {
+		LookupFn: func(requestContext context.Context, hospital, lookupID string) (*domain.Patient, error) {
 			return nil, platform.ErrUpstream
 		},
 	}
@@ -138,7 +138,7 @@ func TestLookup_InvalidID(t *testing.T) {
 	t.Parallel()
 	secret := strings.Repeat("s", 32)
 	svc := &stubService{
-		LookupFn: func(ctx context.Context, hospital, lookupID string) (*domain.Patient, error) {
+		LookupFn: func(requestContext context.Context, hospital, lookupID string) (*domain.Patient, error) {
 			return nil, apperr.ErrInvalidInput
 		},
 	}
@@ -154,7 +154,7 @@ func TestSearch_OK(t *testing.T) {
 	t.Parallel()
 	secret := strings.Repeat("s", 32)
 	svc := &stubService{
-		SearchFn: func(ctx context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error) {
+		SearchFn: func(requestContext context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error) {
 			require.Equal(t, "hospital-a", hospital)
 			return []domain.Patient{{
 				ID: "p1", Hospital: hospital, Email: strPtr("a@example.com"),
@@ -192,7 +192,7 @@ func TestSearch_NoFilters(t *testing.T) {
 	t.Parallel()
 	secret := strings.Repeat("s", 32)
 	svc := &stubService{
-		SearchFn: func(ctx context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error) {
+		SearchFn: func(requestContext context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error) {
 			return nil, apperr.ErrInvalidInput
 		},
 	}
@@ -209,7 +209,7 @@ func TestSearch_EmptyArrayNotNull(t *testing.T) {
 	t.Parallel()
 	secret := strings.Repeat("s", 32)
 	svc := &stubService{
-		SearchFn: func(ctx context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error) {
+		SearchFn: func(requestContext context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error) {
 			return []domain.Patient{}, nil
 		},
 	}
@@ -228,7 +228,7 @@ func TestSearch_CrossHospitalIsolation_Handler(t *testing.T) {
 	t.Parallel()
 	secret := strings.Repeat("s", 32)
 	svc := &stubService{
-		SearchFn: func(ctx context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error) {
+		SearchFn: func(requestContext context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error) {
 			require.Equal(t, "hospital-a", hospital)
 			return []domain.Patient{}, nil
 		},
@@ -249,7 +249,7 @@ func TestSearch_RepoError(t *testing.T) {
 	t.Parallel()
 	secret := strings.Repeat("s", 32)
 	svc := &stubService{
-		SearchFn: func(ctx context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error) {
+		SearchFn: func(requestContext context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error) {
 			return nil, context.DeadlineExceeded
 		},
 	}

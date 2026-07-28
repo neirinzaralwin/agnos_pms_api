@@ -28,17 +28,17 @@ func RequestID() gin.HandlerFunc {
 			id = uuid.NewString()
 		}
 		c.Writer.Header().Set(requestIDHeader, id)
-		ctx := context.WithValue(c.Request.Context(), requestIDKey, id)
-		c.Request = c.Request.WithContext(ctx)
+		requestContext := context.WithValue(c.Request.Context(), requestIDKey, id)
+		c.Request = c.Request.WithContext(requestContext)
 		c.Set("request_id", id)
 		c.Next()
 	}
 }
 
 // RequestIDFromContext returns the request id if present.
-func RequestIDFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(requestIDKey).(string); ok {
-		return v
+func RequestIDFromContext(requestContext context.Context) string {
+	if claimValue, ok := requestContext.Value(requestIDKey).(string); ok {
+		return claimValue
 	}
 	return ""
 }
@@ -84,8 +84,8 @@ func Logger(base *slog.Logger) gin.HandlerFunc {
 		start := time.Now()
 		rid := RequestIDFromContext(c.Request.Context())
 		reqLog := base.With("request_id", rid)
-		ctx := context.WithValue(c.Request.Context(), loggerKey, reqLog)
-		c.Request = c.Request.WithContext(ctx)
+		requestContext := context.WithValue(c.Request.Context(), loggerKey, reqLog)
+		c.Request = c.Request.WithContext(requestContext)
 
 		c.Next()
 
@@ -109,9 +109,9 @@ func Logger(base *slog.Logger) gin.HandlerFunc {
 // Timeout cancels the request context after d.
 func Timeout(d time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), d)
+		requestContext, cancel := context.WithTimeout(c.Request.Context(), d)
 		defer cancel()
-		c.Request = c.Request.WithContext(ctx)
+		c.Request = c.Request.WithContext(requestContext)
 		c.Next()
 	}
 }

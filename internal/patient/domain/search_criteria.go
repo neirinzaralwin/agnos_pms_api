@@ -81,8 +81,8 @@ func ParseSearchCriteria(in SearchCriteriaInput) (SearchCriteria, error) {
 		criteria.Offset = *in.Offset
 	}
 	if in.DateOfBirth != nil && strings.TrimSpace(*in.DateOfBirth) != "" {
-		parsedDOB, err := time.Parse("2006-01-02", strings.TrimSpace(*in.DateOfBirth))
-		if err != nil {
+		parsedDOB, operationError := time.Parse("2006-01-02", strings.TrimSpace(*in.DateOfBirth))
+		if operationError != nil {
 			return SearchCriteria{}, fmt.Errorf("%w: date_of_birth must be YYYY-MM-DD", apperr.ErrInvalidInput)
 		}
 		criteria.DateOfBirth = &parsedDOB

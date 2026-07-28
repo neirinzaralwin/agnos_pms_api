@@ -6,6 +6,6 @@ import "context"
 // hospitalCode as a mandatory argument — there is no method capable of
 // returning patients across hospitals.
 type Repository interface {
-	Upsert(ctx context.Context, patient *Patient) error
-	Search(ctx context.Context, hospitalCode string, criteria SearchCriteria) ([]Patient, error)
+	Upsert(requestContext context.Context, patient *Patient) error
+	Search(requestContext context.Context, hospitalCode string, criteria SearchCriteria) ([]Patient, error)
 }

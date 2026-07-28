@@ -11,10 +11,10 @@ import (
 
 func TestParsePassword(t *testing.T) {
 	t.Parallel()
-	_, err := domain.ParsePassword("short")
-	require.ErrorIs(t, err, apperr.ErrInvalidInput)
+	_, operationError := domain.ParsePassword("short")
+	require.ErrorIs(t, operationError, apperr.ErrInvalidInput)
 
-	pwd, err := domain.ParsePassword("password12345")
-	require.NoError(t, err)
+	pwd, operationError := domain.ParsePassword("password12345")
+	require.NoError(t, operationError)
 	require.Equal(t, "password12345", pwd.String())
 }

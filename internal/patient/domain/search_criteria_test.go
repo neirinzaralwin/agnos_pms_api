@@ -5,17 +5,17 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/neirinzaralwin/patient_management_system_api/internal/shared/apperr"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/patient/domain"
+	"github.com/neirinzaralwin/patient_management_system_api/internal/shared/apperr"
 )
 
 func TestParseSearchCriteria_RequiresFilter(t *testing.T) {
 	t.Parallel()
-	_, err := domain.ParseSearchCriteria(domain.SearchCriteriaInput{})
-	require.ErrorIs(t, err, apperr.ErrInvalidInput)
+	_, operationError := domain.ParseSearchCriteria(domain.SearchCriteriaInput{})
+	require.ErrorIs(t, operationError, apperr.ErrInvalidInput)
 
 	email := "a@b.com"
-	criteria, err := domain.ParseSearchCriteria(domain.SearchCriteriaInput{Email: &email})
-	require.NoError(t, err)
+	criteria, operationError := domain.ParseSearchCriteria(domain.SearchCriteriaInput{Email: &email})
+	require.NoError(t, operationError)
 	require.Equal(t, "a@b.com", *criteria.Email)
 }

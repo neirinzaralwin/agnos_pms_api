@@ -32,8 +32,8 @@ type Client struct {
 
 // New constructs a Hospital A client. baseURL must be an absolute URL.
 func New(baseURL string, timeout time.Duration, log *slog.Logger) (*Client, error) {
-	parsed, err := url.Parse(baseURL)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+	parsed, operationError := url.Parse(baseURL)
+	if operationError != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return nil, fmt.Errorf("hospitalA: invalid base URL")
 	}
 	if log == nil {
@@ -48,27 +48,27 @@ func New(baseURL string, timeout time.Duration, log *slog.Logger) (*Client, erro
 
 // SearchByID looks up a patient by national_id or passport_id. Returns
 // platform.ErrNotFound on HIS 404, platform.ErrUpstream on any other failure.
-func (c *Client) SearchByID(ctx context.Context, lookupID string) (*domain.HISPatientData, error) {
+func (c *Client) SearchByID(requestContext context.Context, lookupID string) (*domain.HISPatientData, error) {
 	if !ValidID(lookupID) {
 		return nil, fmt.Errorf("%w: invalid id", apperr.ErrInvalidInput)
 	}
 
 	endpoint := c.baseURL + "/patient/search/" + url.PathEscape(lookupID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("hospitalA: build request: %w", err)
+	req, operationError := http.NewRequestWithContext(requestContext, http.MethodGet, endpoint, nil)
+	if operationError != nil {
+		return nil, fmt.Errorf("hospitalA: build request: %w", operationError)
 	}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		c.log.Warn("hospitalA request failed", "error", err.Error())
-		return nil, fmt.Errorf("%w: %v", platform.ErrUpstream, err)
+	resp, operationError := c.httpClient.Do(req)
+	if operationError != nil {
+		c.log.Warn("hospitalA request failed", "error", operationError.Error())
+		return nil, fmt.Errorf("%w: %v", platform.ErrUpstream, operationError)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
-	if err != nil {
-		return nil, fmt.Errorf("%w: read body: %v", platform.ErrUpstream, err)
+	body, operationError := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if operationError != nil {
+		return nil, fmt.Errorf("%w: read body: %v", platform.ErrUpstream, operationError)
 	}
 
 	switch {
@@ -80,9 +80,9 @@ func (c *Client) SearchByID(ctx context.Context, lookupID string) (*domain.HISPa
 	}
 
 	var payload wirePatient
-	if err := json.Unmarshal(body, &payload); err != nil {
+	if operationError := json.Unmarshal(body, &payload); operationError != nil {
 		c.log.Warn("hospitalA decode failure", "id_masked", maskID(lookupID))
-		return nil, fmt.Errorf("%w: decode: %v", platform.ErrUpstream, err)
+		return nil, fmt.Errorf("%w: decode: %v", platform.ErrUpstream, operationError)
 	}
 	return payload.toDomain(), nil
 }

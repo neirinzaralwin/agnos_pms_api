@@ -18,8 +18,8 @@ import (
 
 // Service is the patient application port used by this handler.
 type Service interface {
-	LookupFromHIS(ctx context.Context, hospital, lookupID string) (*domain.Patient, error)
-	Search(ctx context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error)
+	LookupFromHIS(requestContext context.Context, hospital, lookupID string) (*domain.Patient, error)
+	Search(requestContext context.Context, hospital string, filter application.SearchFilter) ([]domain.Patient, error)
 }
 
 // Handler serves the patient HTTP endpoints.
@@ -44,9 +44,9 @@ func (h *Handler) Lookup(c *gin.Context) {
 	staffID := middleware.StaffIDFromContext(c.Request.Context())
 	lookupID := c.Param("id")
 
-	patient, err := h.svc.LookupFromHIS(c.Request.Context(), hospital, lookupID)
-	if err != nil {
-		httpkit.MapError(c, err)
+	patient, operationError := h.svc.LookupFromHIS(c.Request.Context(), hospital, lookupID)
+	if operationError != nil {
+		httpkit.MapError(c, operationError)
 		return
 	}
 
@@ -59,8 +59,8 @@ func (h *Handler) Search(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 
 	var req SearchRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpkit.WriteBindError(c, err)
+	if operationError := c.ShouldBindJSON(&req); operationError != nil {
+		httpkit.WriteBindError(c, operationError)
 		return
 	}
 
@@ -80,9 +80,9 @@ func (h *Handler) Search(c *gin.Context) {
 		Offset:      req.Offset,
 	}
 
-	patients, err := h.svc.Search(c.Request.Context(), hospital, filter)
-	if err != nil {
-		httpkit.MapError(c, err)
+	patients, operationError := h.svc.Search(c.Request.Context(), hospital, filter)
+	if operationError != nil {
+		httpkit.MapError(c, operationError)
 		return
 	}
 
