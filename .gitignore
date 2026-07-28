@@ -12,11 +12,18 @@ coverage.html
 .env.local
 .env.*.local
 
-# IDE / OS
+# IDE / OS / agent
 .idea/
 .vscode/
+.cursor/
 .DS_Store
 *.swp
+
+# Local assignment / agent docs (not part of the shipped app)
+Project_Requirement.md
+Project_Requirement.pdf
+CLAUDE.md
+docs/
 
 # Temporary
 tmp/
