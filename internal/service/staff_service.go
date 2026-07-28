@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -20,15 +19,14 @@ type StaffStore interface {
 	GetByUsernameAndHospital(ctx context.Context, username, hospital string) (*model.Staff, error)
 }
 
-// StaffService handles staff create and login.
+// StaffService is the application service for staff registration and authentication.
 type StaffService struct {
-	repo       StaffStore
-	jwtSecret  string
-	jwtTTL     time.Duration
-	bcryptCost int
-	log        *slog.Logger
-	now        func() time.Time
-	// loginLimiter is optional; when set, keys are "username|hospital".
+	repo         StaffStore
+	jwtSecret    string
+	jwtTTL       time.Duration
+	bcryptCost   int
+	log          *slog.Logger
+	now          func() time.Time
 	loginLimiter LoginLimiter
 }
 
@@ -63,26 +61,29 @@ func (s *StaffService) SetLoginLimiter(l LoginLimiter) {
 	s.loginLimiter = l
 }
 
-// Create registers a new staff member.
+// Create registers a new staff member (application use case).
 func (s *StaffService) Create(ctx context.Context, username, password, hospital string) (*model.Staff, error) {
-	username = strings.TrimSpace(username)
-	hospital = strings.ToLower(strings.TrimSpace(hospital))
-	if username == "" || hospital == "" {
-		return nil, fmt.Errorf("%w: username and hospital are required", platform.ErrInvalidInput)
+	user, err := model.ParseUsername(username)
+	if err != nil {
+		return nil, err
 	}
-	if len(password) < 12 {
-		return nil, fmt.Errorf("%w: password must be at least 12 characters", platform.ErrInvalidInput)
+	hospitalCode, err := model.ParseHospitalCode(hospital)
+	if err != nil {
+		return nil, err
+	}
+	plain, err := model.ParsePassword(password)
+	if err != nil {
+		return nil, err
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), s.bcryptCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(plain.String()), s.bcryptCost)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
 
-	staff := &model.Staff{
-		Username:     username,
-		PasswordHash: string(hash),
-		Hospital:     hospital,
+	staff, err := model.NewStaff(user, hospitalCode, string(hash))
+	if err != nil {
+		return nil, err
 	}
 	if err := s.repo.Create(ctx, staff); err != nil {
 		if errors.Is(err, platform.ErrConflict) {
@@ -102,20 +103,26 @@ type LoginResult struct {
 // Login authenticates a staff member. Unknown user, wrong hospital, and wrong
 // password all return the same platform.ErrUnauthorized (anti-enumeration).
 func (s *StaffService) Login(ctx context.Context, username, password, hospital string) (*LoginResult, error) {
-	username = strings.TrimSpace(username)
-	hospital = strings.ToLower(strings.TrimSpace(hospital))
+	user, err := model.ParseUsername(username)
+	if err != nil {
+		// Keep login validation failures as unauthorized? Spec says missing field → 400.
+		return nil, err
+	}
+	hospitalCode, err := model.ParseHospitalCode(hospital)
+	if err != nil {
+		return nil, err
+	}
 
 	if s.loginLimiter != nil {
-		key := username + "|" + hospital
+		key := user.String() + "|" + hospitalCode.String()
 		if !s.loginLimiter.Allow(key) {
 			return nil, platform.ErrRateLimited
 		}
 	}
 
-	staff, err := s.repo.GetByUsernameAndHospital(ctx, username, hospital)
+	staff, err := s.repo.GetByUsernameAndHospital(ctx, user.String(), hospitalCode.String())
 	if err != nil {
 		if errors.Is(err, platform.ErrNotFound) {
-			// Dummy compare so timing does not reveal existence.
 			_ = bcrypt.CompareHashAndPassword([]byte(dummyBcryptHash), []byte(password))
 			return nil, platform.ErrUnauthorized
 		}
@@ -141,8 +148,6 @@ func (s *StaffService) Login(ctx context.Context, username, password, hospital s
 	}, nil
 }
 
-// Precomputed bcrypt of "dummy-password-for-timing" at cost 10 — used only for
-// constant-time padding when the staff row is missing.
 var dummyBcryptHash = mustDummyHash()
 
 func mustDummyHash() string {

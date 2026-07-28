@@ -68,11 +68,11 @@ handler (Gin)  →  service  →  repository  →  PostgreSQL
 ## Design principles
 
 1. One domain concern per package under `internal/`.
-2. Thin handlers, fat services.
+2. Thin handlers, application services orchestrate use cases; rich domain model under `model/`.
 3. Repositories own SQL; interfaces at service boundaries for tests.
-4. HIS I/O isolated in `client/hospitala`.
+4. HIS I/O isolated in `client/hospitala` (anti-corruption layer).
 5. Migrations are an explicit step (not silent on app boot).
-
+6. Light DDD: value objects (`HospitalCode`, `Gender`, …) and aggregate factories in `model/`; no vertical bounded-context folders for this assignment.
 ## Docker / ops entrypoints
 
 | Artifact | Role |

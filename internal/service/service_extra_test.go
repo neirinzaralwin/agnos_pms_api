@@ -33,7 +33,7 @@ func TestStaffCreate_EmptyUsername(t *testing.T) {
 	t.Parallel()
 	svc := service.NewStaffService(newFakeStaffRepo(), strings.Repeat("s", 32), time.Hour, bcrypt.MinCost, nil)
 	_, err := svc.Create(context.Background(), "  ", "password12345", "hospital-a")
-	require.ErrorIs(t, err, platform.ErrInvalidInput)
+	require.ErrorIs(t, err, model.ErrInvalidInput)
 }
 
 func TestPatientSearch_BadDate(t *testing.T) {
@@ -42,7 +42,7 @@ func TestPatientSearch_BadDate(t *testing.T) {
 	_, err := svc.Search(context.Background(), "hospital-a", service.SearchFilter{
 		DateOfBirth: strPtr("not-a-date"),
 	})
-	require.ErrorIs(t, err, platform.ErrInvalidInput)
+	require.ErrorIs(t, err, model.ErrInvalidInput)
 }
 
 func TestPatientSearch_ANDFilters(t *testing.T) {
@@ -65,12 +65,12 @@ func TestLookupFromHIS_EmptyHospital(t *testing.T) {
 	t.Parallel()
 	svc := service.NewPatientService(&fakePatientRepo{}, &fakeHIS{}, nil)
 	_, err := svc.LookupFromHIS(context.Background(), "", "ABC")
-	require.ErrorIs(t, err, platform.ErrInvalidInput)
+	require.ErrorIs(t, err, model.ErrInvalidInput)
 }
 
 func TestPatientSearch_EmptyHospital(t *testing.T) {
 	t.Parallel()
 	svc := service.NewPatientService(&fakePatientRepo{}, &fakeHIS{}, nil)
 	_, err := svc.Search(context.Background(), "", service.SearchFilter{Email: strPtr("a@b.com")})
-	require.ErrorIs(t, err, platform.ErrInvalidInput)
+	require.ErrorIs(t, err, model.ErrInvalidInput)
 }

@@ -129,6 +129,7 @@ Index: [docs/planning/README.md](docs/planning/README.md).
 
 ## Design decisions (highlights)
 
+- **Light DDD:** domain value objects and aggregate factories in `internal/model/`; application services orchestrate use cases; HIS client is the anti-corruption layer.
 - **Two patient endpoints:** HIS lookup (`GET …/:id`) vs local filter search (`POST /patient/search`) — local search never calls HIS.
 - **`POST` for filter search** so PII filters stay out of query strings and access logs.
 - **Access token only** (no refresh token) — JWT TTL configurable (`JWT_TTL`, default 60m).

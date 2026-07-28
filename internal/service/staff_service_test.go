@@ -93,7 +93,7 @@ func TestStaffCreate_ShortPassword(t *testing.T) {
 	t.Parallel()
 	svc := service.NewStaffService(newFakeStaffRepo(), strings.Repeat("s", 32), time.Hour, bcrypt.MinCost, nil)
 	_, err := svc.Create(context.Background(), "alice", "short", "hospital-a")
-	require.ErrorIs(t, err, platform.ErrInvalidInput)
+	require.ErrorIs(t, err, model.ErrInvalidInput)
 }
 
 func TestStaffLogin_Valid(t *testing.T) {

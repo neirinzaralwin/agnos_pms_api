@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
-	"time"
 
 	"github.com/neirinzaralwin/patient_management_system_api/internal/client/hospitala"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/model"
@@ -20,12 +18,12 @@ type PatientStore interface {
 	Search(ctx context.Context, hospital string, f repository.SearchFilter) ([]model.Patient, error)
 }
 
-// HISClient is the Hospital A port.
+// HISClient is the Hospital A port (anti-corruption layer entry).
 type HISClient interface {
 	SearchByID(ctx context.Context, id string) (*hospitala.Patient, error)
 }
 
-// PatientService orchestrates HIS lookup and local search.
+// PatientService is the application service for HIS lookup and hospital-scoped search.
 type PatientService struct {
 	repo PatientStore
 	his  HISClient
@@ -40,17 +38,18 @@ func NewPatientService(repo PatientStore, his HISClient, log *slog.Logger) *Pati
 	return &PatientService{repo: repo, his: his, log: log}
 }
 
-// LookupFromHIS fetches a patient from HIS, upserts under hospital, and returns it.
+// LookupFromHIS fetches a patient from HIS, registers it under the caller's hospital, and returns it.
 func (s *PatientService) LookupFromHIS(ctx context.Context, hospital, id string) (*model.Patient, error) {
-	hospital = strings.ToLower(strings.TrimSpace(hospital))
-	if hospital == "" {
-		return nil, fmt.Errorf("%w: hospital required", platform.ErrInvalidInput)
+	hospitalCode, err := model.ParseHospitalCode(hospital)
+	if err != nil {
+		return nil, err
 	}
-	if !hospitala.ValidID(id) {
-		return nil, fmt.Errorf("%w: invalid id", platform.ErrInvalidInput)
+	lookupID, err := model.ParseLookupID(id)
+	if err != nil {
+		return nil, err
 	}
 
-	hisPatient, err := s.his.SearchByID(ctx, id)
+	hisPatient, err := s.his.SearchByID(ctx, lookupID.String())
 	if err != nil {
 		if errors.Is(err, platform.ErrNotFound) {
 			return nil, platform.ErrNotFound
@@ -61,80 +60,42 @@ func (s *PatientService) LookupFromHIS(ctx context.Context, hospital, id string)
 		return nil, fmt.Errorf("%w: %v", platform.ErrUpstream, err)
 	}
 
-	patient := mapHISToModel(hospital, hisPatient)
+	patient, err := model.RegisterFromHIS(hospitalCode, toHISPatientData(hisPatient))
+	if err != nil {
+		return nil, err
+	}
 	if err := s.repo.Upsert(ctx, patient); err != nil {
 		return nil, fmt.Errorf("upsert patient: %w", err)
 	}
 	return patient, nil
 }
 
-// SearchFilter is the service-level search input (optional fields).
-type SearchFilter struct {
-	NationalID  *string
-	PassportID  *string
-	FirstName   *string
-	MiddleName  *string
-	LastName    *string
-	DateOfBirth *string // YYYY-MM-DD
-	PhoneNumber *string
-	Email       *string
-	Limit       *int
-	Offset      *int
-}
-
-// FilterFieldNames returns which filter fields were set (names only, never values).
-func (f SearchFilter) FilterFieldNames() []string {
-	names := make([]string, 0, 8)
-	add := func(name string, v *string) {
-		if v != nil && *v != "" {
-			names = append(names, name)
-		}
-	}
-	add("national_id", f.NationalID)
-	add("passport_id", f.PassportID)
-	add("first_name", f.FirstName)
-	add("middle_name", f.MiddleName)
-	add("last_name", f.LastName)
-	add("date_of_birth", f.DateOfBirth)
-	add("phone_number", f.PhoneNumber)
-	add("email", f.Email)
-	return names
-}
+// SearchFilter is kept as the handler-facing alias of model.SearchCriteriaInput.
+type SearchFilter = model.SearchCriteriaInput
 
 // Search queries local patients scoped to hospital. Never calls HIS.
 func (s *PatientService) Search(ctx context.Context, hospital string, f SearchFilter) ([]model.Patient, error) {
-	hospital = strings.ToLower(strings.TrimSpace(hospital))
-	if hospital == "" {
-		return nil, fmt.Errorf("%w: hospital required", platform.ErrInvalidInput)
+	hospitalCode, err := model.ParseHospitalCode(hospital)
+	if err != nil {
+		return nil, err
 	}
-	if len(f.FilterFieldNames()) == 0 {
-		return nil, fmt.Errorf("%w: at least one search filter is required", platform.ErrInvalidInput)
-	}
-
-	repoFilter := repository.SearchFilter{
-		NationalID:  trimPtr(f.NationalID),
-		PassportID:  trimPtr(f.PassportID),
-		FirstName:   trimPtr(f.FirstName),
-		MiddleName:  trimPtr(f.MiddleName),
-		LastName:    trimPtr(f.LastName),
-		PhoneNumber: trimPtr(f.PhoneNumber),
-		Email:       trimPtr(f.Email),
-	}
-	if f.Limit != nil {
-		repoFilter.Limit = *f.Limit
-	}
-	if f.Offset != nil {
-		repoFilter.Offset = *f.Offset
-	}
-	if f.DateOfBirth != nil && *f.DateOfBirth != "" {
-		d, err := time.Parse("2006-01-02", strings.TrimSpace(*f.DateOfBirth))
-		if err != nil {
-			return nil, fmt.Errorf("%w: date_of_birth must be YYYY-MM-DD", platform.ErrInvalidInput)
-		}
-		repoFilter.DateOfBirth = &d
+	criteria, err := model.ParseSearchCriteria(f)
+	if err != nil {
+		return nil, err
 	}
 
-	patients, err := s.repo.Search(ctx, hospital, repoFilter)
+	patients, err := s.repo.Search(ctx, hospitalCode.String(), repository.SearchFilter{
+		NationalID:  criteria.NationalID,
+		PassportID:  criteria.PassportID,
+		FirstName:   criteria.FirstName,
+		MiddleName:  criteria.MiddleName,
+		LastName:    criteria.LastName,
+		DateOfBirth: criteria.DateOfBirth,
+		PhoneNumber: criteria.PhoneNumber,
+		Email:       criteria.Email,
+		Limit:       criteria.Limit,
+		Offset:      criteria.Offset,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("search patients: %w", err)
 	}
@@ -144,59 +105,20 @@ func (s *PatientService) Search(ctx context.Context, hospital string, f SearchFi
 	return patients, nil
 }
 
-func mapHISToModel(hospital string, h *hospitala.Patient) *model.Patient {
-	p := &model.Patient{
-		Hospital:     hospital,
-		FirstNameTH:  emptyToNil(h.FirstNameTH),
-		MiddleNameTH: emptyToNil(h.MiddleNameTH),
-		LastNameTH:   emptyToNil(h.LastNameTH),
-		FirstNameEN:  emptyToNil(h.FirstNameEN),
-		MiddleNameEN: emptyToNil(h.MiddleNameEN),
-		LastNameEN:   emptyToNil(h.LastNameEN),
-		PatientHN:    emptyToNil(h.PatientHN),
-		NationalID:   emptyToNil(h.NationalID),
-		PassportID:   emptyToNil(h.PassportID),
-		PhoneNumber:  emptyToNil(h.PhoneNumber),
-		Email:        emptyToNil(h.Email),
-		Gender:       normalizeGender(h.Gender),
+func toHISPatientData(h *hospitala.Patient) model.HISPatientData {
+	return model.HISPatientData{
+		FirstNameTH:  h.FirstNameTH,
+		MiddleNameTH: h.MiddleNameTH,
+		LastNameTH:   h.LastNameTH,
+		FirstNameEN:  h.FirstNameEN,
+		MiddleNameEN: h.MiddleNameEN,
+		LastNameEN:   h.LastNameEN,
+		DateOfBirth:  h.DateOfBirth,
+		PatientHN:    h.PatientHN,
+		NationalID:   h.NationalID,
+		PassportID:   h.PassportID,
+		PhoneNumber:  h.PhoneNumber,
+		Email:        h.Email,
+		Gender:       h.Gender,
 	}
-	if h.DateOfBirth != nil && *h.DateOfBirth != "" {
-		if d, err := time.Parse("2006-01-02", strings.TrimSpace(*h.DateOfBirth)); err == nil {
-			p.DateOfBirth = &d
-		}
-	}
-	return p
-}
-
-func normalizeGender(g *string) *string {
-	if g == nil {
-		return nil
-	}
-	v := strings.TrimSpace(*g)
-	if v == "M" || v == "F" {
-		return &v
-	}
-	return nil
-}
-
-func emptyToNil(s *string) *string {
-	if s == nil {
-		return nil
-	}
-	v := strings.TrimSpace(*s)
-	if v == "" {
-		return nil
-	}
-	return &v
-}
-
-func trimPtr(s *string) *string {
-	if s == nil {
-		return nil
-	}
-	v := strings.TrimSpace(*s)
-	if v == "" {
-		return nil
-	}
-	return &v
 }

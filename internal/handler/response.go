@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/neirinzaralwin/patient_management_system_api/internal/middleware"
+	"github.com/neirinzaralwin/patient_management_system_api/internal/model"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/platform"
 )
 
@@ -44,7 +45,7 @@ func writeError(c *gin.Context, status int, code, message string) {
 // mapError translates known sentinel errors to HTTP responses.
 func mapError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, platform.ErrInvalidInput):
+	case errors.Is(err, platform.ErrInvalidInput), errors.Is(err, model.ErrInvalidInput):
 		writeError(c, http.StatusBadRequest, "INVALID_INPUT", safeMessage(err, "invalid input"))
 	case errors.Is(err, platform.ErrUnauthorized):
 		writeError(c, http.StatusUnauthorized, "UNAUTHORIZED", "invalid credentials")
@@ -64,18 +65,15 @@ func mapError(c *gin.Context, err error) {
 }
 
 func safeMessage(err error, fallback string) string {
-	// Prefer a short, user-safe message without wrapping noise.
 	msg := err.Error()
-	if errors.Is(err, platform.ErrInvalidInput) {
-		// Strip the sentinel prefix if present.
+	if errors.Is(err, platform.ErrInvalidInput) || errors.Is(err, model.ErrInvalidInput) {
 		const prefix = "invalid input: "
 		if len(msg) > len(prefix) && msg[:len(prefix)] == prefix {
 			return msg[len(prefix):]
 		}
-		if msg == platform.ErrInvalidInput.Error() {
+		if msg == platform.ErrInvalidInput.Error() || msg == model.ErrInvalidInput.Error() {
 			return fallback
 		}
-		// fmt.Errorf("%w: detail", ErrInvalidInput) → "invalid input: detail"
 		if idx := len("invalid input"); len(msg) > idx+2 && msg[:idx] == "invalid input" {
 			return msg[idx+2:]
 		}

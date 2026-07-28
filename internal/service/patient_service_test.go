@@ -155,7 +155,7 @@ func TestLookupFromHIS_InvalidID_NeverCallsHIS(t *testing.T) {
 	svc := service.NewPatientService(&fakePatientRepo{}, his, nil)
 
 	_, err := svc.LookupFromHIS(context.Background(), "hospital-a", "bad id!")
-	require.ErrorIs(t, err, platform.ErrInvalidInput)
+	require.ErrorIs(t, err, model.ErrInvalidInput)
 	require.Equal(t, 0, his.called)
 }
 
@@ -245,7 +245,7 @@ func TestPatientSearch_NoFilters(t *testing.T) {
 	t.Parallel()
 	svc := service.NewPatientService(&fakePatientRepo{}, &fakeHIS{}, nil)
 	_, err := svc.Search(context.Background(), "hospital-a", service.SearchFilter{})
-	require.ErrorIs(t, err, platform.ErrInvalidInput)
+	require.ErrorIs(t, err, model.ErrInvalidInput)
 }
 
 func TestPatientSearch_EmptySliceNotNil(t *testing.T) {
