@@ -16,14 +16,14 @@ func TestIssueAndParse(t *testing.T) {
 	secret := strings.Repeat("s", 32)
 	now := time.Now().UTC()
 
-	token, err := platform.Issue(platform.TokenClaims{
+	token, operationError := platform.Issue(platform.TokenClaims{
 		StaffID:  "staff-1",
 		Hospital: "hospital-a",
 	}, secret, time.Hour, now)
-	require.NoError(t, err)
+	require.NoError(t, operationError)
 
-	claims, err := platform.Parse(token, secret)
-	require.NoError(t, err)
+	claims, operationError := platform.Parse(token, secret)
+	require.NoError(t, operationError)
 	require.Equal(t, "staff-1", claims.StaffID)
 	require.Equal(t, "hospital-a", claims.Hospital)
 }
@@ -37,12 +37,12 @@ func TestParse_RejectsNoneAlg(t *testing.T) {
 		"hospital": "hospital-a",
 		"exp":      time.Now().Add(time.Hour).Unix(),
 	})
-	signed, err := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
-	require.NoError(t, err)
+	signed, operationError := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
+	require.NoError(t, operationError)
 
-	_, err = platform.Parse(signed, secret)
-	require.Error(t, err)
-	require.ErrorIs(t, err, platform.ErrUnauthorized)
+	_, operationError = platform.Parse(signed, secret)
+	require.Error(t, operationError)
+	require.ErrorIs(t, operationError, platform.ErrUnauthorized)
 }
 
 func TestParse_Expired(t *testing.T) {
@@ -50,13 +50,13 @@ func TestParse_Expired(t *testing.T) {
 	secret := strings.Repeat("s", 32)
 	now := time.Now().Add(-2 * time.Hour)
 
-	token, err := platform.Issue(platform.TokenClaims{
+	token, operationError := platform.Issue(platform.TokenClaims{
 		StaffID:  "staff-1",
 		Hospital: "hospital-a",
 	}, secret, time.Minute, now)
-	require.NoError(t, err)
+	require.NoError(t, operationError)
 
-	_, err = platform.Parse(token, secret)
-	require.Error(t, err)
-	require.ErrorIs(t, err, platform.ErrUnauthorized)
+	_, operationError = platform.Parse(token, secret)
+	require.Error(t, operationError)
+	require.ErrorIs(t, operationError, platform.ErrUnauthorized)
 }

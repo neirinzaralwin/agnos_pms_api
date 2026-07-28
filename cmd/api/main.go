@@ -10,69 +10,79 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/neirinzaralwin/patient_management_system_api/internal/client/hospitala"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/config"
-	"github.com/neirinzaralwin/patient_management_system_api/internal/handler"
+	"github.com/neirinzaralwin/patient_management_system_api/internal/httpapi"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/middleware"
+	patientapp "github.com/neirinzaralwin/patient_management_system_api/internal/patient/application"
+	"github.com/neirinzaralwin/patient_management_system_api/internal/patient/infrastructure/hospitalA"
+	patientpostgres "github.com/neirinzaralwin/patient_management_system_api/internal/patient/infrastructure/postgres"
+	patienttransport "github.com/neirinzaralwin/patient_management_system_api/internal/patient/transport/http"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/platform"
-	"github.com/neirinzaralwin/patient_management_system_api/internal/repository"
-	"github.com/neirinzaralwin/patient_management_system_api/internal/service"
+	staffapp "github.com/neirinzaralwin/patient_management_system_api/internal/staff/application"
+	staffpostgres "github.com/neirinzaralwin/patient_management_system_api/internal/staff/infrastructure/postgres"
+	stafftransport "github.com/neirinzaralwin/patient_management_system_api/internal/staff/transport/http"
 )
 
 // version is injected via -ldflags at build time.
 var version = "dev"
 
 func main() {
-	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "startup error: %v\n", err)
+	if operationError := run(); operationError != nil {
+		fmt.Fprintf(os.Stderr, "startup error: %v\n", operationError)
 		os.Exit(1)
 	}
 }
 
 func run() error {
-	cfg, err := config.Load()
-	if err != nil {
-		return fmt.Errorf("config: %w", err)
+	// Load runtime configuration from the environment.
+	appConfig, operationError := config.Load()
+	if operationError != nil {
+		return fmt.Errorf("config: %w", operationError)
 	}
 
-	log := platform.NewLogger(cfg.Env, cfg.LogLevel)
+	// Initialize shared infrastructure.
+	log := platform.NewLogger(appConfig.Env, appConfig.LogLevel)
 
-	ctx := context.Background()
-	pool, err := platform.NewPool(ctx, cfg)
-	if err != nil {
-		return err
+	parentContext := context.Background()
+	pool, operationError := platform.NewPool(parentContext, appConfig)
+	if operationError != nil {
+		return operationError
 	}
 	defer pool.Close()
 
-	hisClient, err := hospitala.New(cfg.HospitalABaseURL, cfg.HospitalATimeout, log)
-	if err != nil {
-		return fmt.Errorf("hospitala client: %w", err)
+	// Build external clients and persistence adapters.
+	hisClient, operationError := hospitalA.New(appConfig.HospitalABaseURL, appConfig.HospitalATimeout, log)
+	if operationError != nil {
+		return fmt.Errorf("hospitalA client: %w", operationError)
 	}
 
-	staffRepo := repository.NewStaffRepository(pool)
-	patientRepo := repository.NewPatientRepository(pool)
+	staffRepo := staffpostgres.NewRepository(pool)
+	patientRepo := patientpostgres.NewRepository(pool)
 
-	staffSvc := service.NewStaffService(staffRepo, cfg.JWTSecret, cfg.JWTTTL, cfg.BcryptCost, log)
-	loginUserLimiter := middleware.NewFixedWindowLimiter(10, 15*time.Minute)
-	staffSvc.SetLoginLimiter(loginUserLimiter)
+	// Wire application services and rate limits.
+	staffSvc := staffapp.NewService(staffRepo, appConfig.JWTSecret, appConfig.JWTTTL, appConfig.BcryptCost, log)
+	staffSvc.SetLoginLimiter(middleware.NewFixedWindowLimiter(10, 15*time.Minute))
 
-	patientSvc := service.NewPatientService(patientRepo, hisClient, log)
+	patientSvc := patientapp.NewService(patientRepo, hisClient, log)
 
-	staffHandler := handler.NewStaffHandler(staffSvc)
-	patientHandler := handler.NewPatientHandler(patientSvc, log)
+	// Create HTTP handlers and compose the router.
+	staffHandler := stafftransport.NewHandler(staffSvc)
+	patientHandler := patienttransport.NewHandler(patientSvc, log)
 
-	router := handler.NewRouter(handler.RouterDeps{
+	router := httpapi.NewRouter(httpapi.RouterDeps{
 		Log:            log,
 		Pool:           pool,
-		Env:            cfg.Env,
-		JWTSecret:      cfg.JWTSecret,
+		Env:            appConfig.Env,
+		JWTSecret:      appConfig.JWTSecret,
+		EnableDocs:     appConfig.EnableDocs,
 		StaffHandler:   staffHandler,
 		PatientHandler: patientHandler,
 		LoginLimiter:   middleware.NewFixedWindowLimiter(10, 15*time.Minute),
 		PatientLimiter: middleware.NewFixedWindowLimiter(60, time.Minute),
 	})
 
-	addr := ":" + cfg.Port
+	// Configure the HTTP server with production-safe timeouts.
+	addr := ":" + appConfig.Port
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           router,
@@ -82,35 +92,40 @@ func run() error {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	errCh := make(chan error, 1)
+	// Start serving requests in the background.
+	serverErrorCh := make(chan error, 1)
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
+		if operationError := srv.ListenAndServe(); operationError != nil && !errors.Is(operationError, http.ErrServerClosed) {
+			serverErrorCh <- operationError
 		}
 	}()
 
+	// Emit startup metadata for operators.
 	log.Info("server started",
 		"version", version,
-		"port", cfg.Port,
-		"env", cfg.Env,
-		"log_level", cfg.LogLevel,
+		"port", appConfig.Port,
+		"env", appConfig.Env,
+		"log_level", appConfig.LogLevel,
+		"docs", appConfig.EnableDocs,
 	)
 
-	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// Wait for a shutdown signal or an unexpected server error.
+	signalContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	select {
-	case <-sigCtx.Done():
+	case <-signalContext.Done():
 		log.Info("shutdown signal received")
-	case err := <-errCh:
-		return fmt.Errorf("server error: %w", err)
+	case operationError := <-serverErrorCh:
+		return fmt.Errorf("server error: %w", operationError)
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	// Gracefully stop the server and allow inflight requests to finish.
+	shutdownContext, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Error("graceful shutdown failed", "error", err)
-		return err
+	if operationError := srv.Shutdown(shutdownContext); operationError != nil {
+		log.Error("graceful shutdown failed", "error", operationError)
+		return operationError
 	}
 	log.Info("server stopped")
 	return nil

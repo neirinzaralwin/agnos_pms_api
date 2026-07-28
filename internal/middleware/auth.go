@@ -29,16 +29,16 @@ func Auth(jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
-		claims, err := platform.Parse(parts[1], jwtSecret)
-		if err != nil {
+		claims, parseError := platform.Parse(parts[1], jwtSecret)
+		if parseError != nil {
 			abortUnauthorized(c)
 			return
 		}
 
-		ctx := c.Request.Context()
-		ctx = context.WithValue(ctx, staffIDKey, claims.StaffID)
-		ctx = context.WithValue(ctx, hospitalKey, claims.Hospital)
-		c.Request = c.Request.WithContext(ctx)
+		requestContext := c.Request.Context()
+		requestContext = context.WithValue(requestContext, staffIDKey, claims.StaffID)
+		requestContext = context.WithValue(requestContext, hospitalKey, claims.Hospital)
+		c.Request = c.Request.WithContext(requestContext)
 		c.Set("staff_id", claims.StaffID)
 		c.Set("hospital", claims.Hospital)
 		c.Next()
@@ -46,17 +46,17 @@ func Auth(jwtSecret string) gin.HandlerFunc {
 }
 
 // StaffIDFromContext returns the authenticated staff id, or empty.
-func StaffIDFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(staffIDKey).(string); ok {
-		return v
+func StaffIDFromContext(requestContext context.Context) string {
+	if claimValue, ok := requestContext.Value(staffIDKey).(string); ok {
+		return claimValue
 	}
 	return ""
 }
 
 // HospitalFromContext returns the authenticated hospital claim, or empty.
-func HospitalFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(hospitalKey).(string); ok {
-		return v
+func HospitalFromContext(requestContext context.Context) string {
+	if claimValue, ok := requestContext.Value(hospitalKey).(string); ok {
+		return claimValue
 	}
 	return ""
 }

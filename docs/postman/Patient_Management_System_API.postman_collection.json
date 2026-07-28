@@ -1,0 +1,484 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Patient Management System API",
+    "description": "Hospital middleware API for staff auth and hospital-scoped patient search.\n\n**Prerequisites**\n1. `cp .env.example .env && make up`\n2. Import this collection **and** `Local.postman_environment.json`\n3. Select the **Local** environment\n4. Run **Demo walkthrough** folder top-to-bottom (or use Collection Runner)\n\n**Auth:** `POST /staff/login` saves `accessToken`. Patient requests send `Authorization: Bearer {{accessToken}}`.\n\n**Mock HIS fixture ids:** `1100700123456`, `A1234567`, `ODDGENDER`. Reserved (negative): `500ERROR`, `BADJSON`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "username", "value": "alice" },
+    { "key": "password", "value": "password12345" },
+    { "key": "hospital", "value": "hospital-a" },
+    { "key": "accessToken", "value": "" },
+    { "key": "patientLookupId", "value": "1100700123456" },
+    { "key": "passportLookupId", "value": "A1234567" }
+  ],
+  "item": [
+    {
+      "name": "Demo walkthrough",
+      "description": "Happy path matching README. Run in order.",
+      "item": [
+        {
+          "name": "1. Create staff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201 or 409 (already exists)', function () {",
+                  "    pm.expect([201, 409]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\",\n  \"hospital\": \"{{hospital}}\"\n}"
+            },
+            "url": "{{baseUrl}}/staff/create",
+            "description": "Creates a staff account bound to one hospital. Password must be at least 12 characters. Uniqueness is `(username, hospital)`."
+          }
+        },
+        {
+          "name": "2. Login (saves accessToken)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('returns access_token', function () {",
+                  "    pm.expect(body.data.access_token).to.be.a('string').and.not.empty;",
+                  "});",
+                  "if (body && body.data && body.data.access_token) {",
+                  "    pm.collectionVariables.set('accessToken', body.data.access_token);",
+                  "    pm.environment.set('accessToken', body.data.access_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\",\n  \"hospital\": \"{{hospital}}\"\n}"
+            },
+            "url": "{{baseUrl}}/staff/login",
+            "description": "Authenticates and stores JWT in `accessToken` for subsequent patient calls."
+          }
+        },
+        {
+          "name": "3. HIS lookup (national id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Cache-Control is no-store', function () {",
+                  "    pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store');",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('patient hospital matches staff hospital', function () {",
+                  "    pm.expect(body.data.hospital).to.eql(pm.collectionVariables.get('hospital'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/patient/search/{{patientLookupId}}",
+            "description": "Looks up patient from Hospital A HIS by national_id or passport_id, upserts locally under the JWT hospital, returns the stored record."
+          }
+        },
+        {
+          "name": "4. Local search (hospital-scoped)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('returns data array and meta.count', function () {",
+                  "    pm.expect(body.data).to.be.an('array');",
+                  "    pm.expect(body.meta.count).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"national_id\": \"{{patientLookupId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/patient/search",
+            "description": "Searches local Postgres only (never calls HIS). Always scoped to the hospital claim in the JWT."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Liveness — GET /healthz",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('status ok', function () { pm.expect(pm.response.json().status).to.eql('ok'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": "Process liveness. No dependency checks."
+          }
+        },
+        {
+          "name": "Readiness — GET /readyz",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('status ready', function () { pm.expect(pm.response.json().status).to.eql('ready'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/readyz",
+            "description": "Readiness probe (Postgres ping)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Staff",
+      "item": [
+        {
+          "name": "Create staff — POST /staff/create",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\",\n  \"hospital\": \"{{hospital}}\"\n}"
+            },
+            "url": "{{baseUrl}}/staff/create",
+            "description": "Public. Creates staff bound to one hospital."
+          }
+        },
+        {
+          "name": "Login — POST /staff/login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    if (body && body.data && body.data.access_token) {",
+                  "        pm.collectionVariables.set('accessToken', body.data.access_token);",
+                  "        pm.environment.set('accessToken', body.data.access_token);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\",\n  \"hospital\": \"{{hospital}}\"\n}"
+            },
+            "url": "{{baseUrl}}/staff/login",
+            "description": "Public. Returns JWT and saves `accessToken`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Patient",
+      "item": [
+        {
+          "name": "HIS lookup by national id — GET /patient/search/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/patient/search/{{patientLookupId}}",
+            "description": "Requires login. Mock fixture: `1100700123456`."
+          }
+        },
+        {
+          "name": "HIS lookup by passport — GET /patient/search/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/patient/search/{{passportLookupId}}",
+            "description": "Requires login. Mock fixture: `A1234567`."
+          }
+        },
+        {
+          "name": "Local search — POST /patient/search",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"national_id\": \"{{patientLookupId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/patient/search",
+            "description": "Requires login. All filters optional individually, but at least one non-empty filter is required. Results scoped to JWT hospital only."
+          }
+        },
+        {
+          "name": "Local search by name/DOB — POST /patient/search",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"last_name\": \"Jaidee\",\n  \"date_of_birth\": \"1990-01-15\"\n}"
+            },
+            "url": "{{baseUrl}}/patient/search",
+            "description": "Example multi-filter search against locally stored patients."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Negative cases",
+      "description": "Useful failure scenarios for manual / Collection Runner checks.",
+      "item": [
+        {
+          "name": "Create staff — short password (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('INVALID_INPUT', function () { pm.expect(pm.response.json().error.code).to.eql('INVALID_INPUT'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"bob\",\n  \"password\": \"short\",\n  \"hospital\": \"hospital-a\"\n}"
+            },
+            "url": "{{baseUrl}}/staff/create"
+          }
+        },
+        {
+          "name": "Login — wrong password (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', function () { pm.response.to.have.status(401); });",
+                  "pm.test('UNAUTHORIZED', function () { pm.expect(pm.response.json().error.code).to.eql('UNAUTHORIZED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"wrong-password-here\",\n  \"hospital\": \"{{hospital}}\"\n}"
+            },
+            "url": "{{baseUrl}}/staff/login"
+          }
+        },
+        {
+          "name": "HIS lookup — missing token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/patient/search/{{patientLookupId}}"
+          }
+        },
+        {
+          "name": "HIS lookup — unknown id (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', function () { pm.response.to.have.status(404); });",
+                  "pm.test('NOT_FOUND', function () { pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/patient/search/DOES-NOT-EXIST"
+          }
+        },
+        {
+          "name": "HIS lookup — upstream 500 (502)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 502', function () { pm.response.to.have.status(502); });",
+                  "pm.test('BAD_GATEWAY', function () { pm.expect(pm.response.json().error.code).to.eql('BAD_GATEWAY'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/patient/search/500ERROR",
+            "description": "Mock HIS reserved id that returns HTTP 500 → API maps to BAD_GATEWAY."
+          }
+        },
+        {
+          "name": "Local search — empty filters (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('INVALID_INPUT', function () { pm.expect(pm.response.json().error.code).to.eql('INVALID_INPUT'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{baseUrl}}/patient/search"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -85,8 +85,8 @@ func main() {
 	}
 
 	log.Printf("hospital-a mock listening on :%s", port)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("server error: %v", err)
+	if operationError := srv.ListenAndServe(); operationError != nil && operationError != http.ErrServerClosed {
+		log.Fatalf("server error: %v", operationError)
 	}
 }
 

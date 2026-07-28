@@ -1,0 +1,573 @@
+openapi: 3.0.3
+info:
+  title: Patient Management System API
+  description: |
+    Hospital middleware API for staff authentication and hospital-scoped patient search.
+
+    Patient records are sourced from Hospital A HIS on lookup and stored locally in Postgres.
+    Every patient query is scoped to the hospital claim in the authenticated JWT — never to a
+    request field.
+  version: 1.0.0
+  contact:
+    name: API maintainers
+
+servers:
+  - url: /
+    description: Current host
+
+tags:
+  - name: Staff
+    description: Staff account creation and login
+  - name: Patient
+    description: HIS lookup and local hospital-scoped search (auth required)
+  - name: Health
+    description: Liveness and readiness probes
+
+paths:
+  /staff/create:
+    post:
+      tags: [Staff]
+      summary: Create staff
+      description: Creates a staff account bound to a single hospital.
+      operationId: createStaff
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStaffRequest'
+            example:
+              username: nurse.anna
+              password: "correct-horse-battery"
+              hospital: hospital-a
+      responses:
+        '201':
+          description: Staff created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StaffDataResponse'
+        '400':
+          $ref: '#/components/responses/InvalidInput'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /staff/login:
+    post:
+      tags: [Staff]
+      summary: Login
+      description: |
+        Authenticates with username, password, and hospital. Failures are indistinguishable
+        (unknown user, wrong hospital, wrong password) to prevent enumeration.
+      operationId: loginStaff
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              username: nurse.anna
+              password: "correct-horse-battery"
+              hospital: hospital-a
+      responses:
+        '200':
+          description: Login succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginDataResponse'
+        '400':
+          $ref: '#/components/responses/InvalidInput'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /patient/search/{id}:
+    get:
+      tags: [Patient]
+      summary: Lookup patient from HIS
+      description: |
+        Looks up a patient by national ID or passport ID against Hospital A HIS,
+        upserts the record into the local database tagged with the caller's hospital,
+        and returns the stored record.
+      operationId: lookupPatientFromHIS
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: National ID or passport ID
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+      responses:
+        '200':
+          description: Patient found and upserted
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientDataResponse'
+        '400':
+          $ref: '#/components/responses/InvalidInput'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /patient/search:
+    post:
+      tags: [Patient]
+      summary: Search local patients
+      description: |
+        Searches locally stored patients. All filters are optional but at least one is required.
+        Results are always scoped to the hospital in the JWT claim. A `hospital` field in the
+        body, if present, is ignored for authorization.
+      operationId: searchPatients
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatientSearchRequest'
+            example:
+              last_name: Somchai
+              date_of_birth: "1990-01-15"
+              limit: 50
+      responses:
+        '200':
+          description: Search results (may be empty)
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientCollectionResponse'
+        '400':
+          $ref: '#/components/responses/InvalidInput'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Liveness
+      description: Process is alive. No dependency checks.
+      operationId: healthz
+      responses:
+        '200':
+          description: Alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: ok
+
+  /readyz:
+    get:
+      tags: [Health]
+      summary: Readiness
+      description: Checks database reachability.
+      operationId: readyz
+      responses:
+        '200':
+          description: Ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyStatus'
+              example:
+                status: ready
+        '503':
+          description: Dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnavailableStatus'
+              example:
+                status: unavailable
+                dependency: postgres
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT issued by `POST /staff/login`. Claims include `sub` (staff id) and `hospital`.
+        Send as `Authorization: Bearer <token>`.
+
+  schemas:
+    CreateStaffRequest:
+      type: object
+      required: [username, password, hospital]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 64
+        password:
+          type: string
+          minLength: 12
+          maxLength: 128
+          format: password
+        hospital:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: Hospital code (normalized lowercase on write), e.g. hospital-a
+
+    LoginRequest:
+      type: object
+      required: [username, password, hospital]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 64
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+          format: password
+        hospital:
+          type: string
+          minLength: 1
+          maxLength: 64
+
+    Staff:
+      type: object
+      required: [id, username, hospital, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        hospital:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    StaffDataResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Staff'
+
+    Login:
+      type: object
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          format: int64
+          description: Token lifetime in seconds
+
+    LoginDataResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Login'
+
+    PatientSearchRequest:
+      type: object
+      description: At least one filter field (other than limit/offset) is required.
+      properties:
+        national_id:
+          type: string
+          maxLength: 64
+        passport_id:
+          type: string
+          maxLength: 64
+        first_name:
+          type: string
+          maxLength: 200
+        middle_name:
+          type: string
+          maxLength: 200
+        last_name:
+          type: string
+          maxLength: 200
+        date_of_birth:
+          type: string
+          format: date
+          description: YYYY-MM-DD
+        phone_number:
+          type: string
+          maxLength: 32
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+        offset:
+          type: integer
+          minimum: 0
+          default: 0
+
+    Patient:
+      type: object
+      required: [id, hospital, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        hospital:
+          type: string
+        first_name_th:
+          type: string
+          nullable: true
+        middle_name_th:
+          type: string
+          nullable: true
+        last_name_th:
+          type: string
+          nullable: true
+        first_name_en:
+          type: string
+          nullable: true
+        middle_name_en:
+          type: string
+          nullable: true
+        last_name_en:
+          type: string
+          nullable: true
+        date_of_birth:
+          type: string
+          format: date
+          nullable: true
+        patient_hn:
+          type: string
+          nullable: true
+        national_id:
+          type: string
+          nullable: true
+        passport_id:
+          type: string
+          nullable: true
+        phone_number:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        gender:
+          type: string
+          nullable: true
+          enum: [M, F]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PatientDataResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Patient'
+
+    PatientCollectionResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Patient'
+        meta:
+          type: object
+          required: [count]
+          properties:
+            count:
+              type: integer
+
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - INVALID_INPUT
+            - UNAUTHORIZED
+            - NOT_FOUND
+            - CONFLICT
+            - RATE_LIMITED
+            - PAYLOAD_TOO_LARGE
+            - BAD_GATEWAY
+            - INTERNAL_ERROR
+        message:
+          type: string
+          description: Human-readable, safe to show a user (no PII, SQL, or stack traces)
+        request_id:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+
+    ReadyStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ready
+
+    UnavailableStatus:
+      type: object
+      required: [status, dependency]
+      properties:
+        status:
+          type: string
+          example: unavailable
+        dependency:
+          type: string
+          example: postgres
+
+  responses:
+    InvalidInput:
+      description: Invalid request body or parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INVALID_INPUT
+              message: invalid request body
+    Unauthorized:
+      description: Missing or invalid credentials / token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: invalid credentials
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: NOT_FOUND
+              message: resource not found
+    Conflict:
+      description: Resource already exists
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: CONFLICT
+              message: resource already exists
+    RateLimited:
+      description: Too many requests
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: RATE_LIMITED
+              message: too many requests
+    PayloadTooLarge:
+      description: Request body too large
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: PAYLOAD_TOO_LARGE
+              message: request body too large
+    BadGateway:
+      description: Upstream HIS unavailable or returned an unexpected error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: BAD_GATEWAY
+              message: upstream service unavailable
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: an unexpected error occurred

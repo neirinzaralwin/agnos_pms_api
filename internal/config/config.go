@@ -27,12 +27,15 @@ type Config struct {
 	DBMaxConnLifetime   time.Duration
 	DBMaxConnIdleTime   time.Duration
 	DBHealthCheckPeriod time.Duration
+	// EnableDocs serves OpenAPI, Swagger UI, and ReDoc. Defaults to true
+	// outside production; set ENABLE_DOCS=true|false to override.
+	EnableDocs bool
 }
 
 // Load reads and validates required environment variables. It fails fast on
 // missing or invalid secrets and URLs — never boots with secret defaults.
 func Load() (Config, error) {
-	cfg := Config{
+	appConfig := Config{
 		Env:                 getenv("ENV", "development"),
 		Port:                getenv("PORT", "8080"),
 		LogLevel:            getenv("LOG_LEVEL", "info"),
@@ -46,74 +49,96 @@ func Load() (Config, error) {
 		DBHealthCheckPeriod: time.Minute,
 	}
 
-	if cfg.DatabaseURL == "" {
+	if appConfig.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
 	}
-	if _, err := url.Parse(cfg.DatabaseURL); err != nil {
-		return Config{}, fmt.Errorf("DATABASE_URL is invalid: %w", err)
+	if _, operationError := url.Parse(appConfig.DatabaseURL); operationError != nil {
+		return Config{}, fmt.Errorf("DATABASE_URL is invalid: %w", operationError)
 	}
 
-	if len(cfg.JWTSecret) < minJWTSecretLen {
+	if len(appConfig.JWTSecret) < minJWTSecretLen {
 		return Config{}, fmt.Errorf("JWT_SECRET must be at least %d characters", minJWTSecretLen)
 	}
 
-	ttl, err := parseDuration(getenv("JWT_TTL", "60m"), "JWT_TTL")
-	if err != nil {
-		return Config{}, err
+	ttl, operationError := parseDuration(getenv("JWT_TTL", "60m"), "JWT_TTL")
+	if operationError != nil {
+		return Config{}, operationError
 	}
-	cfg.JWTTTL = ttl
+	appConfig.JWTTTL = ttl
 
-	if v := strings.TrimSpace(os.Getenv("BCRYPT_COST")); v != "" {
-		cost, err := strconv.Atoi(v)
-		if err != nil || cost < 10 || cost > 15 {
+	if rawValue := strings.TrimSpace(os.Getenv("BCRYPT_COST")); rawValue != "" {
+		cost, operationError := strconv.Atoi(rawValue)
+		if operationError != nil || cost < 10 || cost > 15 {
 			return Config{}, fmt.Errorf("BCRYPT_COST must be an integer between 10 and 15")
 		}
-		cfg.BcryptCost = cost
+		appConfig.BcryptCost = cost
 	}
 
-	cfg.HospitalABaseURL = strings.TrimSpace(os.Getenv("HOSPITAL_A_BASE_URL"))
-	if cfg.HospitalABaseURL == "" {
+	appConfig.HospitalABaseURL = strings.TrimSpace(os.Getenv("HOSPITAL_A_BASE_URL"))
+	if appConfig.HospitalABaseURL == "" {
 		return Config{}, fmt.Errorf("HOSPITAL_A_BASE_URL is required")
 	}
-	u, err := url.Parse(cfg.HospitalABaseURL)
-	if err != nil || u.Scheme == "" || u.Host == "" {
+	u, operationError := url.Parse(appConfig.HospitalABaseURL)
+	if operationError != nil || u.Scheme == "" || u.Host == "" {
 		return Config{}, fmt.Errorf("HOSPITAL_A_BASE_URL must be an absolute URL")
 	}
 
-	hisTimeout, err := parseDuration(getenv("HOSPITAL_A_TIMEOUT", "5s"), "HOSPITAL_A_TIMEOUT")
-	if err != nil {
-		return Config{}, err
+	hisTimeout, operationError := parseDuration(getenv("HOSPITAL_A_TIMEOUT", "5s"), "HOSPITAL_A_TIMEOUT")
+	if operationError != nil {
+		return Config{}, operationError
 	}
-	cfg.HospitalATimeout = hisTimeout
+	appConfig.HospitalATimeout = hisTimeout
 
-	if v := strings.TrimSpace(os.Getenv("DB_MAX_CONNS")); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 1 {
+	if rawValue := strings.TrimSpace(os.Getenv("DB_MAX_CONNS")); rawValue != "" {
+		n, operationError := strconv.Atoi(rawValue)
+		if operationError != nil || n < 1 {
 			return Config{}, fmt.Errorf("DB_MAX_CONNS must be a positive integer")
 		}
-		cfg.DBMaxConns = int32(n)
+		appConfig.DBMaxConns = int32(n)
 	}
-	if v := strings.TrimSpace(os.Getenv("DB_MIN_CONNS")); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 0 {
+	if rawValue := strings.TrimSpace(os.Getenv("DB_MIN_CONNS")); rawValue != "" {
+		n, operationError := strconv.Atoi(rawValue)
+		if operationError != nil || n < 0 {
 			return Config{}, fmt.Errorf("DB_MIN_CONNS must be a non-negative integer")
 		}
-		cfg.DBMinConns = int32(n)
+		appConfig.DBMinConns = int32(n)
 	}
 
-	return cfg, nil
+	docs, operationError := parseEnableDocs(os.Getenv("ENABLE_DOCS"), appConfig.Env)
+	if operationError != nil {
+		return Config{}, operationError
+	}
+	appConfig.EnableDocs = docs
+
+	return appConfig, nil
+}
+
+// parseEnableDocs returns whether developer docs routes should be mounted.
+// ENABLE_DOCS=true|false overrides; otherwise docs are on unless ENV=production.
+func parseEnableDocs(raw, env string) (bool, error) {
+	rawValue := strings.TrimSpace(strings.ToLower(raw))
+	switch rawValue {
+	case "":
+		return env != "production", nil
+	case "1", "true", "yes", "on":
+		return true, nil
+	case "0", "false", "no", "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("ENABLE_DOCS must be a boolean (true/false)")
+	}
 }
 
 func getenv(key, fallback string) string {
-	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
-		return v
+	if rawValue := strings.TrimSpace(os.Getenv(key)); rawValue != "" {
+		return rawValue
 	}
 	return fallback
 }
 
 func parseDuration(raw, name string) (time.Duration, error) {
-	d, err := time.ParseDuration(raw)
-	if err != nil || d <= 0 {
+	d, operationError := time.ParseDuration(raw)
+	if operationError != nil || d <= 0 {
 		return 0, fmt.Errorf("%s must be a positive duration (e.g. 60m, 5s)", name)
 	}
 	return d, nil

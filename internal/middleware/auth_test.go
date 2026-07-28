@@ -21,8 +21,8 @@ func init() {
 func TestAuth_ValidToken(t *testing.T) {
 	t.Parallel()
 	secret := strings.Repeat("s", 32)
-	tok, err := platform.Issue(platform.TokenClaims{StaffID: "s1", Hospital: "hospital-a"}, secret, time.Hour, time.Now())
-	require.NoError(t, err)
+	tok, operationError := platform.Issue(platform.TokenClaims{StaffID: "s1", Hospital: "hospital-a"}, secret, time.Hour, time.Now())
+	require.NoError(t, operationError)
 
 	r := gin.New()
 	r.Use(middleware.Auth(secret))
