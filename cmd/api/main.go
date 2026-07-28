@@ -10,13 +10,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/neirinzaralwin/patient_management_system_api/internal/client/hospitala"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/config"
-	"github.com/neirinzaralwin/patient_management_system_api/internal/handler"
+	"github.com/neirinzaralwin/patient_management_system_api/internal/httpapi"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/middleware"
+	patientapp "github.com/neirinzaralwin/patient_management_system_api/internal/patient/application"
+	"github.com/neirinzaralwin/patient_management_system_api/internal/patient/infrastructure/hospitala"
+	patientpostgres "github.com/neirinzaralwin/patient_management_system_api/internal/patient/infrastructure/postgres"
+	patienttransport "github.com/neirinzaralwin/patient_management_system_api/internal/patient/transport/http"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/platform"
-	"github.com/neirinzaralwin/patient_management_system_api/internal/repository"
-	"github.com/neirinzaralwin/patient_management_system_api/internal/service"
+	staffapp "github.com/neirinzaralwin/patient_management_system_api/internal/staff/application"
+	staffpostgres "github.com/neirinzaralwin/patient_management_system_api/internal/staff/infrastructure/postgres"
+	stafftransport "github.com/neirinzaralwin/patient_management_system_api/internal/staff/transport/http"
 )
 
 // version is injected via -ldflags at build time.
@@ -49,19 +53,18 @@ func run() error {
 		return fmt.Errorf("hospitala client: %w", err)
 	}
 
-	staffRepo := repository.NewStaffRepository(pool)
-	patientRepo := repository.NewPatientRepository(pool)
+	staffRepo := staffpostgres.NewRepository(pool)
+	patientRepo := patientpostgres.NewRepository(pool)
 
-	staffSvc := service.NewStaffService(staffRepo, cfg.JWTSecret, cfg.JWTTTL, cfg.BcryptCost, log)
-	loginUserLimiter := middleware.NewFixedWindowLimiter(10, 15*time.Minute)
-	staffSvc.SetLoginLimiter(loginUserLimiter)
+	staffSvc := staffapp.NewService(staffRepo, cfg.JWTSecret, cfg.JWTTTL, cfg.BcryptCost, log)
+	staffSvc.SetLoginLimiter(middleware.NewFixedWindowLimiter(10, 15*time.Minute))
 
-	patientSvc := service.NewPatientService(patientRepo, hisClient, log)
+	patientSvc := patientapp.NewService(patientRepo, hisClient, log)
 
-	staffHandler := handler.NewStaffHandler(staffSvc)
-	patientHandler := handler.NewPatientHandler(patientSvc, log)
+	staffHandler := stafftransport.NewHandler(staffSvc)
+	patientHandler := patienttransport.NewHandler(patientSvc, log)
 
-	router := handler.NewRouter(handler.RouterDeps{
+	router := httpapi.NewRouter(httpapi.RouterDeps{
 		Log:            log,
 		Pool:           pool,
 		Env:            cfg.Env,
