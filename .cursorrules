@@ -1,0 +1,22 @@
+Start from docs/knowledge-base/README.md; it indexes all rules for this repo.
+
+Consult pinned technical decisions in docs/knowledge-base/decisions.md before re-deciding anything
+Follow project architecture defined in docs/knowledge-base/architecture_overview.md
+Follow coding standards defined in docs/knowledge-base/coding_rules.md
+Follow Go and Gin rules defined in docs/knowledge-base/go_gin_rules.md
+Follow security and PII rules in docs/knowledge-base/security_rules.md
+Follow operational rules (health, shutdown, timeouts, Docker) in docs/knowledge-base/observability_and_ops.md
+Follow test requirements in docs/knowledge-base/testing_strategy.md
+Respect dependency direction from docs/knowledge-base/dependency_map.md
+Respect module boundaries from docs/knowledge-base/module_boundaries.md
+Apply SOLID principles from docs/knowledge-base/solid_principles.md
+Follow folder placement strategy from docs/knowledge-base/folder_structure.md
+
+Non-negotiable: every patient query filters by the hospital from the authenticated JWT claim, never from a request field
+Never log passwords, tokens, or full national/passport IDs
+Build SQL with parameterized queries only — never fmt.Sprintf
+Use structured logging (log/slog) — no fmt.Println / log.Print in committed application code
+Every new behavior needs a positive and a negative test
+Run gofmt, go vet ./..., go test ./... -race -cover, and govulncheck ./... (and golangci-lint run when configured) before finishing changes
+
+Product requirements: Project_Requirement.md

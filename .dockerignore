@@ -1,0 +1,16 @@
+.git
+.github
+.cursor
+docs
+*.md
+.env
+.env.*
+!.env.example
+*.test
+coverage.out
+coverage.html
+bin/
+dist/
+.DS_Store
+tmp/
+graphify-out/
