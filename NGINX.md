@@ -46,17 +46,17 @@ sequenceDiagram
 
 ## What Nginx is responsible for
 
-| Concern | Directive(s) | Detail |
-|---|---|---|
-| TLS termination | `ssl_certificate` / `ssl_certificate_key` (443 server) | Self-signed cert, local assessment only — see [TLS](#tls-local-self-signed) |
-| Rate limiting | `limit_req_zone` / `limit_req` | 10 req/s per IP, burst 20, `nodelay` |
-| Body size cap | `client_max_body_size 1m` | Blocks oversized requests at the edge |
-| Header forwarding | `proxy_set_header` | `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Request-ID` |
-| Request correlation | `map` + custom `log_format main` | Reuses inbound `X-Request-ID` or generates `$request_id`; logged as `req_id=` |
-| Security response headers | `add_header ... always` | `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, `Strict-Transport-Security` |
-| Health routing | `location /healthz` | Proxied, unauthenticated, `access_log off` |
-| Version hiding | `server_tokens off` | No Nginx version in `Server` header / error pages |
-| Timeouts | `proxy_connect/send/read_timeout` | 5s / 30s / 30s to the upstream |
+| Concern                   | Directive(s)                                           | Detail                                                                                    |
+| ------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| TLS termination           | `ssl_certificate` / `ssl_certificate_key` (443 server) | Self-signed cert, local assessment only — see [TLS](#tls-local-self-signed)               |
+| Rate limiting             | `limit_req_zone` / `limit_req`                         | 10 req/s per IP, burst 20, `nodelay`                                                      |
+| Body size cap             | `client_max_body_size 1m`                              | Blocks oversized requests at the edge                                                     |
+| Header forwarding         | `proxy_set_header`                                     | `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Request-ID`                       |
+| Request correlation       | `map` + custom `log_format main`                       | Reuses inbound `X-Request-ID` or generates `$request_id`; logged as `req_id=`             |
+| Security response headers | `add_header ... always`                                | `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, `Strict-Transport-Security` |
+| Health routing            | `location /healthz`                                    | Proxied, unauthenticated, `access_log off`                                                |
+| Version hiding            | `server_tokens off`                                    | No Nginx version in `Server` header / error pages                                         |
+| Timeouts                  | `proxy_connect/send/read_timeout`                      | 5s / 30s / 30s to the upstream                                                            |
 
 Application-level concerns (auth, per-hospital scoping, per-staff-id rate limits,
 JWT) live in the Go service — Nginx only does edge-level defense in depth.
@@ -72,9 +72,9 @@ make setup   # creates the Postgres volume + generates nginx/certs/server.{crt,k
 make up      # docker compose up -d --build
 ```
 
-| Port | Protocol | Env var |
-|---|---|---|
-| `8080` (host) → `80` (container) | HTTP | `NGINX_PORT` |
+| Port                              | Protocol            | Env var          |
+| --------------------------------- | ------------------- | ---------------- |
+| `8080` (host) → `80` (container)  | HTTP                | `NGINX_PORT`     |
 | `8443` (host) → `443` (container) | HTTPS (self-signed) | `NGINX_TLS_PORT` |
 
 ```bash
@@ -98,10 +98,3 @@ nginx/
     ├── server.crt
     └── server.key
 ```
-
-## Related docs
-
-- [`docs/knowledge-base/architecture_overview.md`](docs/knowledge-base/architecture_overview.md) — runtime topology
-- [`docs/knowledge-base/security_rules.md`](docs/knowledge-base/security_rules.md) §9 — transport/header rules Nginx must satisfy
-- [`docs/knowledge-base/observability_and_ops.md`](docs/knowledge-base/observability_and_ops.md) §11 — Compose service contract
-- [`docs/knowledge-base/decisions.md`](docs/knowledge-base/decisions.md) D-012 — TLS decision
