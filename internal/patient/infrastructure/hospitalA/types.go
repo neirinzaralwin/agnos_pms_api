@@ -1,4 +1,4 @@
-package hospitala
+package hospitalA
 
 import "github.com/neirinzaralwin/patient_management_system_api/internal/patient/domain"
 

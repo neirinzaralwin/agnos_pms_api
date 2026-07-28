@@ -86,10 +86,10 @@ flowchart LR
 | Layer | Responsibility |
 | ----- | ---------------- |
 | Nginx | TLS, rate limit, header forwarding, reverse proxy |
-| Gin handlers | Bind/validate HTTP, map errors to JSON |
-| Services | Auth, hospital scope, HIS upsert orchestration |
-| Repositories | Parameterized SQL for Staff / Patient |
-| `client/hospitala` | Sole HTTP adapter for Hospital A |
+| `<context>/transport/http` | Bind/validate HTTP, map errors to JSON |
+| `<context>/application` | Auth, hospital scope, HIS upsert orchestration |
+| `<context>/infrastructure/postgres` | Parameterized SQL for Staff / Patient |
+| `patient/infrastructure/hospitalA` | Sole HTTP adapter for Hospital A |
 | `cmd/mockhis` | Local HIS stub for Compose demos |
 
 **Authorization invariant:** every patient row returned to a caller must belong to the same `hospital` as that caller's JWT claim. Hospital for access control is never taken from the request body.
@@ -129,7 +129,7 @@ Index: [docs/planning/README.md](docs/planning/README.md).
 
 ## Design decisions (highlights)
 
-- **Light DDD:** domain value objects and aggregate factories in `internal/model/`; application services orchestrate use cases; HIS client is the anti-corruption layer.
+- **Full DDD:** `staff` and `patient` are separate bounded contexts (`domain` → `application` → `infrastructure`/`transport`); domain value objects and aggregate factories live in each context's `domain/`; the Hospital A client is the anti-corruption layer, returning domain types only.
 - **Two patient endpoints:** HIS lookup (`GET …/:id`) vs local filter search (`POST /patient/search`) — local search never calls HIS.
 - **`POST` for filter search** so PII filters stay out of query strings and access logs.
 - **Access token only** (no refresh token) — JWT TTL configurable (`JWT_TTL`, default 60m).
@@ -142,18 +142,18 @@ Index: [docs/planning/README.md](docs/planning/README.md).
 ## Project layout (short)
 
 ```text
-cmd/api/           # composition root
-cmd/mockhis/       # local Hospital A stub
+cmd/api/             # composition root
+cmd/mockhis/         # local Hospital A stub
 internal/
-  handler/         # HTTP
-  service/         # business rules
-  repository/      # SQL
-  client/hospitala # HIS adapter
-  middleware/      # auth, request ID, recovery, rate limit
+  staff/             # bounded context: domain, application, infrastructure/postgres, transport/http
+  patient/           # bounded context: domain, application, infrastructure/{postgres,hospitalA}, transport/http
+  shared/            # shared kernel: apperr, hospital (Code VO), httpkit
+  httpapi/           # HTTP composition root: router, health
+  middleware/        # auth, request ID, recovery, rate limit
   config/ platform/
-migrations/        # versioned SQL
-nginx/             # reverse proxy
-docs/planning/     # interviewer-facing planning docs
+migrations/          # versioned SQL
+nginx/               # reverse proxy
+docs/planning/       # interviewer-facing planning docs
 ```
 
 Details: [docs/planning/01-project-structure.md](docs/planning/01-project-structure.md).

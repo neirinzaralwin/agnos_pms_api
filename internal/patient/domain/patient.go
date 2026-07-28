@@ -31,7 +31,7 @@ type Patient struct {
 }
 
 // HISPatientData is the domain-side shape of an upstream HIS patient record.
-// The hospitala adapter (the anti-corruption layer) maps its own wire format
+// The hospitalA adapter (the anti-corruption layer) maps its own wire format
 // into this shape, so the domain and application layers never see HIS JSON.
 type HISPatientData struct {
 	FirstNameTH  *string

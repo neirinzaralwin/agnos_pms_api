@@ -1,8 +1,8 @@
-// Package hospitala is the anti-corruption layer for Hospital A's HIS. It is
+// Package hospitalA is the anti-corruption layer for Hospital A's HIS. It is
 // the only place that speaks Hospital A's wire format — SearchByID decodes
 // the response and maps it into domain.HISPatientData before returning, so
 // no other package ever imports Hospital A's JSON shape.
-package hospitala
+package hospitalA
 
 import (
 	"context"
@@ -34,7 +34,7 @@ type Client struct {
 func New(baseURL string, timeout time.Duration, log *slog.Logger) (*Client, error) {
 	parsed, err := url.Parse(baseURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return nil, fmt.Errorf("hospitala: invalid base URL")
+		return nil, fmt.Errorf("hospitalA: invalid base URL")
 	}
 	if log == nil {
 		log = slog.Default()
@@ -56,12 +56,12 @@ func (c *Client) SearchByID(ctx context.Context, lookupID string) (*domain.HISPa
 	endpoint := c.baseURL + "/patient/search/" + url.PathEscape(lookupID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, fmt.Errorf("hospitala: build request: %w", err)
+		return nil, fmt.Errorf("hospitalA: build request: %w", err)
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		c.log.Warn("hospitala request failed", "error", err.Error())
+		c.log.Warn("hospitalA request failed", "error", err.Error())
 		return nil, fmt.Errorf("%w: %v", platform.ErrUpstream, err)
 	}
 	defer resp.Body.Close()
@@ -75,13 +75,13 @@ func (c *Client) SearchByID(ctx context.Context, lookupID string) (*domain.HISPa
 	case resp.StatusCode == http.StatusNotFound:
 		return nil, platform.ErrNotFound
 	case resp.StatusCode != http.StatusOK:
-		c.log.Warn("hospitala non-ok status", "status", resp.StatusCode, "id_masked", maskID(lookupID))
+		c.log.Warn("hospitalA non-ok status", "status", resp.StatusCode, "id_masked", maskID(lookupID))
 		return nil, fmt.Errorf("%w: status %d", platform.ErrUpstream, resp.StatusCode)
 	}
 
 	var payload wirePatient
 	if err := json.Unmarshal(body, &payload); err != nil {
-		c.log.Warn("hospitala decode failure", "id_masked", maskID(lookupID))
+		c.log.Warn("hospitalA decode failure", "id_masked", maskID(lookupID))
 		return nil, fmt.Errorf("%w: decode: %v", platform.ErrUpstream, err)
 	}
 	return payload.toDomain(), nil

@@ -31,7 +31,7 @@ Compose runs **nginx + api + postgres + migrate (one-shot) + hospital-a-mock**. 
 │   │   ├── application/          # Service: LookupFromHIS, Search
 │   │   ├── infrastructure/
 │   │   │   ├── postgres/          # Repository implementation
-│   │   │   └── hospitala/         # Hospital A HTTP adapter (anti-corruption layer)
+│   │   │   └── hospitalA/         # Hospital A HTTP adapter (anti-corruption layer)
 │   │   └── transport/http/       # Handler, DTOs
 │   ├── shared/                   # Shared kernel: apperr, hospital (Code VO), httpkit (response envelope)
 │   ├── httpapi/                  # Composition root for HTTP: router, health
@@ -54,7 +54,7 @@ Compose runs **nginx + api + postgres + migrate (one-shot) + hospital-a-mock**. 
 ```text
 transport/http (Gin)  →  application  →  domain ports
                                               │
-                                 infrastructure/postgres, infrastructure/hospitala
+                                 infrastructure/postgres, infrastructure/hospitalA
 ```
 
 | Layer | May do | Must not do |
@@ -62,7 +62,7 @@ transport/http (Gin)  →  application  →  domain ports
 | **transport/http** | Bind/validate, call the application service, map errors to HTTP | SQL, HIS HTTP, business rules |
 | **application** | Auth rules, hospital scope, upsert orchestration | Import Gin types; talk to DB drivers or the HIS transport package directly |
 | **infrastructure/postgres** | Parameterized SQL for owned tables | Call HIS; import handlers or the application service |
-| **infrastructure/hospitala** | HTTP to Hospital A + decode into the domain shape | Import handlers/repositories/the other context |
+| **infrastructure/hospitalA** | HTTP to Hospital A + decode into the domain shape | Import handlers/repositories/the other context |
 | **domain** | Aggregates, value objects, ports (`Repository`, `HISClient`) | Import Gin, SQL drivers, or an infra wire type |
 
 ## Bounded contexts
@@ -71,7 +71,7 @@ transport/http (Gin)  →  application  →  domain ports
 | ------- | ------- | ----- |
 | Staff create / login | `internal/staff` | `UNIQUE (username, hospital)` |
 | Patient search | `internal/patient` | Always filter by JWT `hospital` |
-| HIS lookup | `patient/infrastructure/hospitala`, called only from `patient/application` | Populates local patients via upsert |
+| HIS lookup | `patient/infrastructure/hospitalA`, called only from `patient/application` | Populates local patients via upsert |
 | Auth | `internal/middleware` | JWT claims: `sub`, `hospital` |
 
 ## Design principles
@@ -79,7 +79,7 @@ transport/http (Gin)  →  application  →  domain ports
 1. One bounded context per top-level package (`staff`, `patient`); each is a small hexagon (domain → application → infrastructure/transport).
 2. Thin transport handlers, application services orchestrate use cases; rich domain model under `<context>/domain/`.
 3. Repositories own SQL; ports declared in `domain` so tests can inject fakes.
-4. HIS I/O isolated in `patient/infrastructure/hospitala` (anti-corruption layer) — it returns domain types, never its own wire shape.
+4. HIS I/O isolated in `patient/infrastructure/hospitalA` (anti-corruption layer) — it returns domain types, never its own wire shape.
 5. Migrations are an explicit step (not silent on app boot).
 6. Full DDD: value objects (`hospital.Code`, `Gender`, …) and aggregate factories live in each context's `domain/`; `internal/shared` holds only what both contexts truly need in common. See [D-013](../knowledge-base/decisions.md) for why this replaced the earlier flat "light DDD" layout.
 

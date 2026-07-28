@@ -14,7 +14,7 @@ import (
 	"github.com/neirinzaralwin/patient_management_system_api/internal/httpapi"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/middleware"
 	patientapp "github.com/neirinzaralwin/patient_management_system_api/internal/patient/application"
-	"github.com/neirinzaralwin/patient_management_system_api/internal/patient/infrastructure/hospitala"
+	"github.com/neirinzaralwin/patient_management_system_api/internal/patient/infrastructure/hospitalA"
 	patientpostgres "github.com/neirinzaralwin/patient_management_system_api/internal/patient/infrastructure/postgres"
 	patienttransport "github.com/neirinzaralwin/patient_management_system_api/internal/patient/transport/http"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/platform"
@@ -48,9 +48,9 @@ func run() error {
 	}
 	defer pool.Close()
 
-	hisClient, err := hospitala.New(cfg.HospitalABaseURL, cfg.HospitalATimeout, log)
+	hisClient, err := hospitalA.New(cfg.HospitalABaseURL, cfg.HospitalATimeout, log)
 	if err != nil {
-		return fmt.Errorf("hospitala client: %w", err)
+		return fmt.Errorf("hospitalA client: %w", err)
 	}
 
 	staffRepo := staffpostgres.NewRepository(pool)

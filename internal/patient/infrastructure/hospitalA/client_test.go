@@ -1,4 +1,4 @@
-package hospitala_test
+package hospitalA_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/neirinzaralwin/patient_management_system_api/internal/patient/infrastructure/hospitala"
+	"github.com/neirinzaralwin/patient_management_system_api/internal/patient/infrastructure/hospitalA"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/platform"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/shared/apperr"
 )
@@ -26,7 +26,7 @@ func TestSearchByID_OK(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := hospitala.New(srv.URL, 2*time.Second, nil)
+	client, err := hospitalA.New(srv.URL, 2*time.Second, nil)
 	require.NoError(t, err)
 
 	patient, err := client.SearchByID(context.Background(), "1100700123456")
@@ -43,7 +43,7 @@ func TestSearchByID_NotFound(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := hospitala.New(srv.URL, 2*time.Second, nil)
+	client, err := hospitalA.New(srv.URL, 2*time.Second, nil)
 	require.NoError(t, err)
 
 	_, err = client.SearchByID(context.Background(), "MISSING")
@@ -57,7 +57,7 @@ func TestSearchByID_Upstream500(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := hospitala.New(srv.URL, 2*time.Second, nil)
+	client, err := hospitalA.New(srv.URL, 2*time.Second, nil)
 	require.NoError(t, err)
 
 	_, err = client.SearchByID(context.Background(), "X")
@@ -72,7 +72,7 @@ func TestSearchByID_BadJSON(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := hospitala.New(srv.URL, 2*time.Second, nil)
+	client, err := hospitalA.New(srv.URL, 2*time.Second, nil)
 	require.NoError(t, err)
 
 	_, err = client.SearchByID(context.Background(), "X")
@@ -87,7 +87,7 @@ func TestSearchByID_Timeout(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := hospitala.New(srv.URL, 50*time.Millisecond, nil)
+	client, err := hospitalA.New(srv.URL, 50*time.Millisecond, nil)
 	require.NoError(t, err)
 
 	_, err = client.SearchByID(context.Background(), "X")
@@ -103,7 +103,7 @@ func TestSearchByID_InvalidID(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := hospitala.New(srv.URL, 2*time.Second, nil)
+	client, err := hospitalA.New(srv.URL, 2*time.Second, nil)
 	require.NoError(t, err)
 
 	_, err = client.SearchByID(context.Background(), "bad id!")
@@ -113,8 +113,8 @@ func TestSearchByID_InvalidID(t *testing.T) {
 
 func TestValidID(t *testing.T) {
 	t.Parallel()
-	require.True(t, hospitala.ValidID("A123"))
-	require.False(t, hospitala.ValidID(""))
-	require.False(t, hospitala.ValidID("has space"))
-	require.False(t, hospitala.ValidID(string(make([]byte, 65))))
+	require.True(t, hospitalA.ValidID("A123"))
+	require.False(t, hospitalA.ValidID(""))
+	require.False(t, hospitalA.ValidID("has space"))
+	require.False(t, hospitalA.ValidID(string(make([]byte, 65))))
 }
