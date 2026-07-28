@@ -13,12 +13,18 @@ COPY cmd ./cmd
 COPY internal ./internal
 
 ARG VERSION=dev
+
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w -X main.version=${VERSION}" \
     -o /out/api \
     ./cmd/api
 
-FROM alpine:3.21
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w" \
+    -o /out/mockhis \
+    ./cmd/mockhis
+
+FROM alpine:3.21 AS api
 
 RUN apk add --no-cache ca-certificates wget \
     && adduser -D -u 65532 -g nonroot nonroot
@@ -32,3 +38,18 @@ USER nonroot:nonroot
 EXPOSE 8080
 
 ENTRYPOINT ["/api"]
+
+FROM alpine:3.21 AS mockhis
+
+RUN apk add --no-cache ca-certificates wget \
+    && adduser -D -u 65532 -g nonroot nonroot
+
+WORKDIR /
+
+COPY --from=builder /out/mockhis /mockhis
+
+USER nonroot:nonroot
+
+EXPOSE 9090
+
+ENTRYPOINT ["/mockhis"]

@@ -45,6 +45,9 @@ func RequestIDFromContext(ctx context.Context) string {
 
 // Recovery logs panics with stack and returns a generic INTERNAL_ERROR envelope.
 func Recovery(log *slog.Logger) gin.HandlerFunc {
+	if log == nil {
+		log = slog.Default()
+	}
 	return func(c *gin.Context) {
 		defer func() {
 			if rec := recover(); rec != nil {
@@ -69,6 +72,9 @@ func Recovery(log *slog.Logger) gin.HandlerFunc {
 
 // Logger emits one access log line per request (skips health probes).
 func Logger(base *slog.Logger) gin.HandlerFunc {
+	if base == nil {
+		base = slog.Default()
+	}
 	return func(c *gin.Context) {
 		if c.Request.URL.Path == "/healthz" || c.Request.URL.Path == "/readyz" {
 			c.Next()

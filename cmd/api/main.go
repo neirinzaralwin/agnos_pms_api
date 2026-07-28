@@ -10,9 +10,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/neirinzaralwin/patient_management_system_api/internal/client/hospitala"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/config"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/handler"
+	"github.com/neirinzaralwin/patient_management_system_api/internal/middleware"
 	"github.com/neirinzaralwin/patient_management_system_api/internal/platform"
+	"github.com/neirinzaralwin/patient_management_system_api/internal/repository"
+	"github.com/neirinzaralwin/patient_management_system_api/internal/service"
 )
 
 // version is injected via -ldflags at build time.
@@ -40,7 +44,33 @@ func run() error {
 	}
 	defer pool.Close()
 
-	router := handler.NewRouter(log, pool, cfg.Env)
+	hisClient, err := hospitala.New(cfg.HospitalABaseURL, cfg.HospitalATimeout, log)
+	if err != nil {
+		return fmt.Errorf("hospitala client: %w", err)
+	}
+
+	staffRepo := repository.NewStaffRepository(pool)
+	patientRepo := repository.NewPatientRepository(pool)
+
+	staffSvc := service.NewStaffService(staffRepo, cfg.JWTSecret, cfg.JWTTTL, cfg.BcryptCost, log)
+	loginUserLimiter := middleware.NewFixedWindowLimiter(10, 15*time.Minute)
+	staffSvc.SetLoginLimiter(loginUserLimiter)
+
+	patientSvc := service.NewPatientService(patientRepo, hisClient, log)
+
+	staffHandler := handler.NewStaffHandler(staffSvc)
+	patientHandler := handler.NewPatientHandler(patientSvc, log)
+
+	router := handler.NewRouter(handler.RouterDeps{
+		Log:            log,
+		Pool:           pool,
+		Env:            cfg.Env,
+		JWTSecret:      cfg.JWTSecret,
+		StaffHandler:   staffHandler,
+		PatientHandler: patientHandler,
+		LoginLimiter:   middleware.NewFixedWindowLimiter(10, 15*time.Minute),
+		PatientLimiter: middleware.NewFixedWindowLimiter(60, time.Minute),
+	})
 
 	addr := ":" + cfg.Port
 	srv := &http.Server{
